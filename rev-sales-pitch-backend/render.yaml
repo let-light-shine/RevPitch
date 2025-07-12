@@ -1,0 +1,18 @@
+services:
+  - type: web
+    name: rev-sales-pitch-backend
+    env: python
+    buildCommand: "pip install -r requirements.txt"
+    startCommand: "uvicorn main:app --host 0.0.0.0 --port 8000"
+    plan: free
+    envVars:
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: ES_USERNAME
+        sync: false
+      - key: ES_PASSWORD
+        sync: false
+      - key: FROM_EMAIL
+        sync: false
+      - key: EMAIL_PASSWORD
+        sync: false
