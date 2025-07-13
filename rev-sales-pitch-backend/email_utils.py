@@ -1,28 +1,30 @@
-import smtplib
-from email.mime.text import MIMEText
-from email.mime.multipart import MIMEMultipart
+# rev-sales-pitch-backend/email_utils.py
+
 import os
+import smtplib
+from email.message import EmailMessage
 
+# Sends the end-of-campaign summary to your own inbox
+def send_summary_email(to_email: str, from_email: str, summary: str):
+    msg = EmailMessage()
+    msg.set_content(summary)
+    msg["Subject"] = "DevRev Campaign Summary"
+    msg["From"] = from_email
+    msg["To"] = to_email
 
-def send_summary_email(to_email: str, from_email: str, summary_text: str):
-    """
-    Sends an email with the session summary using Gmail's SMTP server.
-    """
+    with smtplib.SMTP_SSL("smtp.gmail.com", 465) as smtp:
+        smtp.login(from_email, os.environ["EMAIL_PASSWORD"])
+        smtp.send_message(msg)
 
-    # Prepare the message
-    message = MIMEMultipart()
-    message["From"] = from_email
-    message["To"] = to_email
-    message["Subject"] = "Your RevPitch Conversation Summary"
+# Sends a single cold email to a lead
+def send_email(recipient: str, subject: str, body: str):
+    from_email = os.environ["FROM_EMAIL"]
+    msg = EmailMessage()
+    msg.set_content(body)
+    msg["Subject"] = subject
+    msg["From"] = from_email
+    msg["To"] = recipient
 
-    body = f"Hi there,\n\nHere's a summary of your conversation:\n\n{summary_text}\n\nCheers,\nTeam RevPitch"
-    message.attach(MIMEText(body, "plain"))
-
-    # Send the email
-    try:
-        with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
-            server.login(from_email, os.environ["EMAIL_PASSWORD"])
-            server.sendmail(from_email, to_email, message.as_string())
-            print(f"Summary email sent to {to_email}")
-    except Exception as e:
-        print(f"Failed to send email to {to_email}. Error: {e}")
+    with smtplib.SMTP_SSL("smtp.gmail.com", 465) as smtp:
+        smtp.login(from_email, os.environ["EMAIL_PASSWORD"])
+        smtp.send_message(msg)
