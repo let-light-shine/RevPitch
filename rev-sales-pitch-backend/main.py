@@ -10,27 +10,26 @@ from email_utils import send_summary_email
 import uuid
 import os
 import logging
-import json
 
-# Load environment variables
+# ————————————————
+# Load & validate env vars
+# ————————————————
 load_dotenv()
-
-# Validate required environment variables
 required_envs = ["OPENAI_API_KEY", "ES_USERNAME", "ES_PASSWORD", "FROM_EMAIL", "EMAIL_PASSWORD"]
 for var in required_envs:
     if not os.environ.get(var):
         raise EnvironmentError(f"Missing required environment variable: {var}")
 
-# Set up logging
+# ————————————————
+# Logging & App init
+# ————————————————
 logging.basicConfig(level=logging.INFO)
-
-# FastAPI App
 app = FastAPI()
 
-# Elasticsearch configuration
+# ————————————————
+# Elasticsearch + LLM setup
+# ————————————————
 ES_URL = "https://022f4eb51f6946e7b708ab92c67d59ab.ap-south-1.aws.elastic-cloud.com:443"
-
-# Initialize LangChain components
 embedding_model = OpenAIEmbeddings(openai_api_key=os.environ["OPENAI_API_KEY"])
 llm = ChatOpenAI(model="gpt-4", temperature=0.2, openai_api_key=os.environ["OPENAI_API_KEY"])
 
@@ -39,223 +38,156 @@ vectorstore1 = ElasticsearchStore(
     index_name="devrev-knowledge-hub",
     embedding=embedding_model,
     es_user=os.environ["ES_USERNAME"],
-    es_password=os.environ["ES_PASSWORD"]
+    es_password=os.environ["ES_PASSWORD"],
 )
-
 vectorstore2 = ElasticsearchStore(
     es_url=ES_URL,
     index_name="devrev_yt_100",
     embedding=embedding_model,
     es_user=os.environ["ES_USERNAME"],
-    es_password=os.environ["ES_PASSWORD"]
+    es_password=os.environ["ES_PASSWORD"],
 )
-
 retrievers = [vectorstore1.as_retriever(), vectorstore2.as_retriever()]
 
-# In-memory stores
-session_memory: Dict[str, List[str]] = {}
-session_stage: Dict[str, str] = {}   # Tracks current stage per session
+# ————————————————
+# In-memory session stores
+# ————————————————
+# session_history holds the back-and-forth transcript
+session_history: Dict[str, List[str]] = {}
+# session_stage holds current funnel stage: exploring, curious, ready, or disinterested
+session_stage: Dict[str, str] = {}
 
-# Helper: classify user intent stage
-def classify_stage(message: str, history: str) -> str:
-    prompt = f"""
-Based on the conversation history and the user's latest message, classify the user's buyer intent stage as one of:
-- exploring
-- curious
-- ready
-- disinterested
+# ————————————————
+# RAG Prompt
+# ————————————————
+CHAT_TEMPLATE = """
+You are Dev, a friendly product expert from DevRev. You’re chatting with someone from {company}, who is a {persona}. Their current stage is {stage}. Continue the conversation below, using context from DevRev documents.
 
-Conversation history:
-{history}
-
-Latest user message:
-\"\"\"{message}\"\"\"
-
-Respond with exactly one of: exploring, curious, ready, disinterested.
-"""
-    result = llm.invoke(prompt)
-    return result.content.strip().lower()
-
-# Helper: build stage-aware prompt
-def intelligent_prompt(company: str, persona: str, history: str, context: str, stage: str) -> str:
-    follow_up = {
-        "exploring": "Ask a clarifying question to understand their needs better.",
-        "curious": "Share relevant use cases or examples from DevRev, then gently ask if they’d like more details.",
-        "ready": "Offer to schedule a short 20-minute demo call or send detailed documentation.",
-        "disinterested": "Thank them politely, offer a fallback resource, and gracefully end the conversation."
-    }
-    return f"""
-You are Dev, a friendly and helpful product expert from DevRev. You're speaking to a {persona} from {company}. Use only verified facts from DevRev documents.
-
-Context from DevRev:
+Context from knowledge-base:
 {context}
 
 Conversation history:
 {history}
 
-The user is in the **{stage}** stage of their buyer journey. Your instruction:
-{follow_up[stage]}
+Answer helpfully, ask good follow-up questions, and only when the user is truly “ready” suggest booking a 20-minute demo call or sending detailed docs.
 
-Respond as Dev:
+Respond with just your reply text.
 """
+chat_prompt = PromptTemplate.from_template(CHAT_TEMPLATE)
 
-# Prompt template for RAG chat (fallback if needed)
-RAG_TEMPLATE = """
-You are Dev, a friendly and helpful product expert from DevRev. You’re chatting with someone from {company}, who works as a {persona}. Continue the conversation using context from DevRev documents.
-
-Context:
-{context}
-
-Conversation history:
-{history}
-
-Respond:
-"""
-rag_prompt = PromptTemplate.from_template(RAG_TEMPLATE)
-
-# Request models
+# ————————————————
+# Pydantic models
+# ————————————————
 class ChatRequest(BaseModel):
-    session_id: str
+    session_id: Optional[str]
     message: str
     company_name: str
     persona: str
-    email: Optional[str] = None 
-
-class ExtractInfoRequest(BaseModel):
-    message: str
+    email: Optional[str] = None
 
 class StartConversationRequest(BaseModel):
     message: str
 
-# Health check
-@app.get("/")
-def health():
-    return {"status": "running"}
-
-# Send summary manually
-@app.post("/send-summary")
-async def send_summary(session_id: str, to_email: str):
-    if session_id not in session_memory:
-        raise HTTPException(status_code=404, detail="Session not found")
-    summary = "\n".join(session_memory[session_id])
-    send_summary_email(to_email, os.environ["FROM_EMAIL"], summary)
-    return {"status": "email_sent"}
-
-# Extract structured info from first message
-@app.post("/extract-info")
-def extract_info(data: ExtractInfoRequest):
-    extract_prompt = f"""
-You will be given the first message of a conversation with a potential customer.
-
-Extract the following fields:
-- company_name
-- persona (e.g., Developer, Product Manager)
-- interest (what they are trying to solve or explore)
-- is_lead: "Yes" or "No"
-
-Respond in valid JSON.
-
-Message:
-\"\"\"{data.message}\"\"\"
-"""
-    result = llm.invoke(extract_prompt)
-    return {"extracted": result.content}
-
-# Start conversation: extract info + first agent reply
+# ————————————————
+# /start-conversation
+# ————————————————
 @app.post("/start-conversation")
 async def start_conversation(data: StartConversationRequest, background_tasks: BackgroundTasks):
-    # Step 1: extract info
-    extract_prompt = f"""
-You will be given the first message of a conversation with a potential customer.
-
-Extract the following:
-- company_name
-- persona
-- interest
-- is_lead
-
-Respond in JSON.
-
-Message:
-\"\"\"{data.message}\"\"\"
-"""
-    result = llm.invoke(extract_prompt)
-    try:
-        info = json.loads(result.content)
-    except json.JSONDecodeError:
-        info = eval(result.content)
-
-    # Initialize session
+    # 1) spin up a new session_id
     session_id = str(uuid.uuid4())
-    session_memory[session_id] = [f"User: {data.message}"]
-    session_stage[session_id] = "exploring"
+    # 2) default stage = "curious"
+    session_stage[session_id] = "curious"
+    # 3) seed the history with the incoming message
+    session_history[session_id] = [f"User: {data.message}"]
 
-    # Step 2: get first agent reply
-    chat_data = ChatRequest(
+    logging.info(f"[{session_id}] Started (stage=curious): {data.message}")
+
+    # 4) call into same /chat logic (with empty company/persona placeholders)
+    #    in your real flow you'll extract those before start; here we fake to keep loop simple
+    chat_req = ChatRequest(
         session_id=session_id,
         message=data.message,
-        company_name=info["company_name"],
-        persona=info["persona"],
+        company_name="Unknown",   # ← replace with real extraction if you have it
+        persona="Unknown",
         email=None
     )
-    chat_resp = await chat_with_agent(chat_data, background_tasks)
+    result = await chat_with_agent(chat_req, background_tasks)
     return {
         "session_id": session_id,
-        "agent_reply": chat_resp["response"],
-        "extracted": info
+        "agent_reply": result["response"],
+        "stage": session_stage[session_id],
     }
 
-# Main chat endpoint with progressive stages
+# ————————————————
+# /chat endpoint
+# ————————————————
 @app.post("/chat")
 async def chat_with_agent(data: ChatRequest, background_tasks: BackgroundTasks):
+    # session bootstrap
     session_id = data.session_id or str(uuid.uuid4())
-    # Ensure memory & stage
-    history_list = session_memory.setdefault(session_id, [])
-    stage = session_stage.get(session_id, "exploring")
+    history = session_history.setdefault(session_id, [])
+    stage   = session_stage.setdefault(session_id, "curious")
 
-    # Append user message
-    logging.info(f"[{session_id}] User: {data.message}")
-    history_list.append(f"User: {data.message}")
-    history = "\n".join(history_list)
+    logging.info(f"[{session_id}][{stage}] User: {data.message}")
+    history.append(f"User: {data.message}")
 
-    # Classify new stage
-    new_stage = classify_stage(data.message, history)
-    if new_stage != stage:
-        logging.info(f"[{session_id}] Stage updated: {stage} → {new_stage}")
-        stage = session_stage[session_id] = new_stage
-
-    # Handle disinterest
-    if stage == "disinterested":
-        reply = "I understand—feel free to reach out if you have more questions in the future!"
-        history_list.append(f"Agent: {reply}")
-        return {"session_id": session_id, "response": reply, "stage": stage}
-
-    # Fetch RAG context
+    # 1) gather RAG context
     query = f"DevRev helping {data.company_name} - {data.persona} perspective"
     docs = []
-    for retriever in retrievers:
-        docs.extend(retriever.get_relevant_documents(query))
-    context = "\n\n".join(doc.page_content for doc in docs)
+    for r in retrievers:
+        docs.extend(r.get_relevant_documents(query))
+    context = "\n\n".join(d.page_content for d in docs)
 
-    # Generate stage-aware reply
-    prompt_text = intelligent_prompt(
+    # 2) build & invoke chat prompt
+    prompt_input = chat_prompt.format(
         company=data.company_name,
         persona=data.persona,
-        history=history,
+        stage=stage,
         context=context,
-        stage=stage
+        history="\n".join(history),
     )
-    response = llm.invoke(prompt_text)
-    history_list.append(f"Agent: {response.content}")
+    resp = llm.invoke(prompt_input).content.strip()
+    logging.info(f"[{session_id}][{stage}] Agent: {resp}")
+    history.append(f"Agent: {resp}")
 
-    # If ready stage and email provided, send summary email
-    if stage == "ready" and data.email:
-        summary = "\n".join(history_list)
+    # 3) simple stage transition logic
+    lower = data.message.lower()
+    if any(k in lower for k in ("schedule", "demo", "call", "book")):
+        next_stage = "ready"
+    elif any(k in lower for k in ("not interested", "no thanks", "nope")):
+        next_stage = "disinterested"
+    else:
+        next_stage = stage  # remain curious or whatever
+
+    session_stage[session_id] = next_stage
+
+    # 4) optionally trigger summary email when they hit “ready”
+    if next_stage == "ready" and data.email:
+        summary = "\n".join(history)
         background_tasks.add_task(
             send_summary_email,
             data.email,
             os.environ["FROM_EMAIL"],
-            f"DevRev Chat Summary:\n\n{summary}"
+            f"Conversation summary:\n\n{summary}",
         )
 
-    return {"session_id": session_id, "response": response.content, "stage": stage}
+    return {
+        "session_id": session_id,
+        "response": resp,
+        "stage": next_stage,
+    }
+
+# ————————————————
+# Manual summary
+# ————————————————
+@app.post("/send-summary")
+async def send_summary(session_id: str, to_email: str):
+    if session_id not in session_history:
+        raise HTTPException(404, "Session not found")
+    summary = "\n".join(session_history[session_id])
+    send_summary_email(to_email, os.environ["FROM_EMAIL"], summary)
+    return {"status": "email_sent"}
+
+@app.get("/")
+def health():
+    return {"status": "running"}
