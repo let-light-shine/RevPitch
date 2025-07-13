@@ -2,7 +2,8 @@ fastapi
 uvicorn
 python-dotenv
 pydantic
-langchain
 openai
 elasticsearch
+langchain
 langchain-community
+langchain-openai
