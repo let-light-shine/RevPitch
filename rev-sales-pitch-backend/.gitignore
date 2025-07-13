@@ -1,0 +1,30 @@
+# Python cache
+__pycache__/
+*.py[cod]
+*.pyo
+
+# Environment variables
+.env
+
+# VSCode
+.vscode/
+
+# macOS metadata
+.DS_Store
+
+# Jupyter Notebooks (if used)
+.ipynb_checkpoints/
+
+# Logs
+*.log
+
+# Virtualenv
+venv/
+ENV/
+env/
+
+# PyInstaller
+*.spec
+
+# Render build cache
+render-build/
