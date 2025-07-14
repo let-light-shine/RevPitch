@@ -151,12 +151,28 @@ async def fetch_context_for_company(company: str, indices: List[str]):
         "external_ctx": external_ctx,
         "devrev_ctx": devrev_ctx
     }
+
 @app.post("/start-campaign")
 async def start_campaign(data: SectorInput, background_tasks: BackgroundTasks):
     job_id = str(uuid4())
-    app.state.batches[job_id] = {"status": "running", "step": "starting"}
+
+    # Update job state
+    app.state.batches[job_id] = {
+        "status": "running",
+        "step": "starting"
+    }
+
+    # Add campaign job to background queue
     background_tasks.add_task(run_campaign_job, job_id, data.sector)
-    return {"job_id": job_id, "status": "started"}
+
+    # Return proper JSON response for frontend
+    return JSONResponse(
+        content={
+            "job_id": job_id,
+            "status": "started"
+        },
+        status_code=200
+    )
 
 async def run_campaign_job(job_id: str, sector: str):
     result = await run_campaign(SectorInput(sector=sector))
@@ -216,11 +232,19 @@ async def run_campaign(data: SectorInput):
 
         output["step"] = "assigning_emails"
         logging.info("📧 Assigning recipient email addresses...")
+        #assignments = {
+        #    c: f"{slugify(c)}@licetteam.testinator.com" for c in companies
+        #}
+        #output["assignments"] = assignments
+        #print(f"✅ Emails assigned: {assignments}")
+        # Send all emails to Krithika's Gmail for testing
         assignments = {
-            c: f"{slugify(c)}@licetteam.testinator.com" for c in companies
+            company: "krithikavjk@gmail.com"
+            for company in companies
         }
         output["assignments"] = assignments
-        print(f"✅ Emails assigned: {assignments}")
+        print("📧 Test Mode: All emails are being sent to krithikavjk@gmail.com")
+
 
         output["step"] = "sending_emails"
         logging.info("📨 Sending emails...")
