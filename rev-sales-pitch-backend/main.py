@@ -1,4 +1,5 @@
 import os
+import time
 import asyncio
 import logging
 import httpx
@@ -273,6 +274,7 @@ async def run_campaign(data: SectorInput):
         logging.info(f"📊 Email Results: Sent = {sent}, Failed = {failed}")
         print(f"📊 Email Results: Sent = {sent}, Failed = {failed}")
 
+        time.sleep(10)
         summary = llm.invoke(
             summary_prompt.format(
                 total=len(results), sent=sent, failed=failed, rate=(sent / len(results)) * 100 if results else 0
