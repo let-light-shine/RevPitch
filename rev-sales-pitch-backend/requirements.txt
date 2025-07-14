@@ -1,11 +1,35 @@
+# FastAPI web framework
 fastapi
 uvicorn[standard]
-python-dotenv
+
+# Pydantic for data models
 pydantic
+
+# File uploads & Excel/CSV handling
+python-multipart
+pandas
+openpyxl         # For reading Excel (.xlsx) files
+
+# Environment variable loading
+python-dotenv
+
+# Async HTTP client (Perplexity API calls)
+httpx
+
+# LangChain + OpenAI integration
 openai
-elasticsearch
 langchain
 langchain-community
 langchain-openai
-python-multipart
-pandas
+
+# Elasticsearch integration
+elasticsearch
+
+# Email validation
+email-validator
+
+# Retry support (Optional, for Perplexity or email retries)
+tenacity
+
+# Slugify company names for email generation
+python-slugify
