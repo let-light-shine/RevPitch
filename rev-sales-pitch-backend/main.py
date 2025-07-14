@@ -1,31 +1,25 @@
 import os
+import uuid
 import time
+import ast
 import asyncio
 import logging
 import httpx
 import pandas as pd
-from typing import List, Dict
 import datetime
+from typing import List, Dict
 from uuid import uuid4
-from fastapi.responses import JSONResponse
 
 from fastapi import FastAPI, File, UploadFile, BackgroundTasks, HTTPException, APIRouter, Request
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel
-from dotenv import load_dotenv, dotenv_values
-
-from langchain.chat_models import ChatOpenAI
-from langchain.prompts import PromptTemplate
-from langchain.embeddings import OpenAIEmbeddings
-from langchain.vectorstores.elasticsearch import ElasticsearchStore
-import smtplib
-from email.mime.text import MIMEText
-from email.mime.multipart import MIMEMultipart
-from email_utils import send_email, send_summary_email
+from dotenv import load_dotenv
 from slugify import slugify
 
-
-# ─── Setup ─────────────────────────────────────────────────────────
+# 🟢 Load env first
 load_dotenv()
+
+# ✅ Validate required env variables
 required_envs = [
     "OPENAI_API_KEY", "ES_USERNAME", "ES_PASSWORD",
     "FROM_EMAIL", "MY_EMAIL", "EMAIL_PASSWORD",
@@ -34,11 +28,38 @@ required_envs = [
 for var in required_envs:
     if not os.getenv(var):
         raise EnvironmentError(f"Missing environment variable: {var}")
+
+# ✅ Logging setup
 logging.basicConfig(level=logging.INFO)
 
+# ✅ OpenAI SDK (new style, used only if not via LangChain)
+from openai import OpenAI
+client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+
+# ✅ LangChain: new imports (clean, updated)
+from langchain_openai import ChatOpenAI, OpenAIEmbeddings
+from langchain_community.vectorstores import ElasticsearchStore
+from langchain.prompts import PromptTemplate
+
+# ✅ Local util for sending emails
+from email_utils import send_email, send_summary_email
+
+from pydantic import BaseModel
+class CampaignRequest(BaseModel):
+    sector: str
+
+
+# ✅ LangChain LLM and embeddings setup (used across campaign)
+llm = ChatOpenAI(
+    model="gpt-4",
+    temperature=0.2,
+    api_key=os.getenv("OPENAI_API_KEY")
+)
+
+embedding_model = OpenAIEmbeddings(api_key=os.getenv("OPENAI_API_KEY"))
+
+# ✅ FastAPI App instance
 app = FastAPI()
-#router = APIRouter()
-#app.include_router(router)  # Ensure router is included
 
 # App state
 app.state.batches = {}
@@ -97,6 +118,14 @@ class SendCampaignRequest(BaseModel):
     batch_id: str
     assigned: Dict[str, str]
 
+# Track job state (in-memory for MVP)
+job_status = {
+    "status": "idle",        # idle | running | completed | failed
+    "progress": 0,           # 0 to 100 percent
+    "message": "",
+    "job_id": None
+}
+
 # ─── Helper Functions ──────────────────────────────────────────────
 async def get_company_context_from_perplexity_async(company: str) -> str:
     headers = {
@@ -154,34 +183,43 @@ async def fetch_context_for_company(company: str, indices: List[str]):
         "devrev_ctx": devrev_ctx
     }
 
-@app.post("/start-campaign")
-async def start_campaign(data: SectorInput, background_tasks: BackgroundTasks):
-    job_id = str(uuid4())
 
-    # Update job state
+
+@app.post("/start-campaign")
+async def start_campaign(request: Request, payload: CampaignRequest):
+    job_id = str(uuid.uuid4())
+    app.state.current_job_id = job_id
     app.state.batches[job_id] = {
         "status": "running",
-        "step": "starting"
+        "step": "starting",
+        "output": {},
     }
 
-    # Add campaign job to background queue
-    background_tasks.add_task(run_campaign_job, job_id, data.sector)
+    asyncio.create_task(run_actual_campaign(payload.sector, job_id))
+    return {"message": f"Campaign for {payload.sector} started.", "job_id": job_id}
 
-    # Return proper JSON response for frontend
-    return JSONResponse(
-        content={
-            "job_id": job_id,
-            "status": "started"
-        },
-        status_code=200
-    )
 
-async def run_campaign_job(job_id: str, sector: str):
-    result = await run_campaign(SectorInput(sector=sector))
-    app.state.batches[job_id] = result
+
+
+#async def run_campaign_job(job_id: str, sector: str):
+#    result = await run_campaign(SectorInput(sector=sector))
+#    app.state.batches[job_id] = result
     
 # ─── Campaign Route ────────────────────────────────────────────────
-async def run_campaign(data: SectorInput):
+async def retry_llm_invoke(prompt: str, retries: int = 3, delay: float = 5):
+    for attempt in range(retries):
+        try:
+            return llm.invoke(prompt)
+        except Exception as e:
+            if "rate limit" in str(e).lower() or "429" in str(e):
+                logging.warning(f"⚠️ Rate limit hit. Retrying in {delay} seconds... (Attempt {attempt + 1})")
+                await asyncio.sleep(delay)
+            else:
+                raise
+    raise Exception("🚨 Exceeded retry limit for OpenAI LLM.")
+
+
+async def run_actual_campaign(sector: str, job_id: str):
     output = {
         "step": "init",
         "status": "running",
@@ -201,8 +239,8 @@ async def run_campaign(data: SectorInput):
         logging.info("🔍 Discovering companies...")
         output["step"] = "discovering_companies"
 
-        resp = llm.invoke(discover_prompt.format(sector=data.sector))
-        companies = eval(resp.content)
+        resp = await retry_llm_invoke(discover_prompt.format(sector=sector))
+        companies = ast.literal_eval(resp.content)
         if isinstance(companies[0], dict) and "name" in companies[0]:
             companies = [c["name"] for c in companies]
 
@@ -215,7 +253,13 @@ async def run_campaign(data: SectorInput):
         print("⏳ Fetching contexts from Perplexity and Elasticsearch...")
 
         indices = ["devrev-knowledge-hub", "devrev_yt_100", "devrev_docs_casestudies"]
-        context_tasks = [fetch_context_for_company(c, indices) for c in companies]
+        semaphore = asyncio.Semaphore(1)
+
+        async def throttled_context_fetch(company):
+            async with semaphore:
+                return await fetch_context_for_company(company, indices)
+
+        context_tasks = [throttled_context_fetch(c) for c in companies]
         contexts = await asyncio.gather(*context_tasks)
         output["contexts"] = contexts
         print("✅ Contexts fetched")
@@ -227,26 +271,19 @@ async def run_campaign(data: SectorInput):
         emails = {}
         for ctx in contexts:
             prompt = email_prompt.format(**ctx)
-            resp = llm.invoke(prompt)
+            resp = await retry_llm_invoke(prompt)
             emails[ctx["company"]] = resp.content
         output["emails"] = emails
         print("✅ Emails generated")
 
         output["step"] = "assigning_emails"
         logging.info("📧 Assigning recipient email addresses...")
-        #assignments = {
-        #    c: f"{slugify(c)}@licetteam.testinator.com" for c in companies
-        #}
-        #output["assignments"] = assignments
-        #print(f"✅ Emails assigned: {assignments}")
-        # Send all emails to Krithika's Gmail for testing
         assignments = {
             company: "krithikavjk@gmail.com"
             for company in companies
         }
         output["assignments"] = assignments
         print("📧 Test Mode: All emails are being sent to krithikavjk@gmail.com")
-
 
         output["step"] = "sending_emails"
         logging.info("📨 Sending emails...")
@@ -257,7 +294,7 @@ async def run_campaign(data: SectorInput):
             to_email = assignments[company]
             subject = f"Opportunities for {company} with DevRev"
             try:
-                # send_email(to_email=to_email, subject=subject, body=body)  # 🔁 TEMP: Commented for testing
+                send_email(to_email=to_email, subject=subject, body=body)  # 🔁 Enable this when live
                 print(f"✅ (MOCKED) Email sent to {company} ({to_email})")
                 results.append({"company": company, "to": to_email, "status": "sent"})
             except Exception as e:
@@ -274,11 +311,12 @@ async def run_campaign(data: SectorInput):
         logging.info(f"📊 Email Results: Sent = {sent}, Failed = {failed}")
         print(f"📊 Email Results: Sent = {sent}, Failed = {failed}")
 
-        time.sleep(10)
-        summary = llm.invoke(
+        await asyncio.sleep(5)
+        summary = (await retry_llm_invoke(
             summary_prompt.format(
-                total=len(results), sent=sent, failed=failed, rate=(sent / len(results)) * 100 if results else 0
-            )
+                total=len(results), sent=sent, failed=failed,
+                rate=(sent / len(results)) * 100 if results else 0
+            ))
         ).content
         output["summary"] = summary
 
@@ -293,18 +331,45 @@ async def run_campaign(data: SectorInput):
         logging.exception("❌ Campaign failed with error")
         print(f"❌ Campaign failed: {str(e)}")
 
+    # ✅ Store the output in app state for the given job
+    app.state.batches[job_id] = {
+        "status": output["status"],
+        "step": output["step"],
+        "output": output
+    }
     return output
 
 
 
-@app.get("/campaign-status/{job_id}")
-def get_campaign_status(job_id: str):
-    logging.info(f"Checking campaign status for job_id: {job_id}")
-    job = app.state.batches.get(job_id)
-    if not job:
-        logging.warning(f"No job found for job_id: {job_id}")
-        raise HTTPException(status_code=404, detail="Job ID not found.")
-    return job
+
+@app.get("/campaign-status")
+def campaign_status():
+    job_id = getattr(app.state, "current_job_id", None)
+    if not job_id or job_id not in app.state.batches:
+        return {"status": "idle", "progress": 0, "message": "", "job_id": None}
+
+    batch = app.state.batches[job_id]
+    return {
+        "status": batch["status"],
+        "progress": 100 if batch["status"] == "complete" else 0,
+        "message": f"Campaign for {job_id} {'completed' if batch['status'] == 'complete' else 'in progress'}.",
+        "job_id": job_id,
+        "step": batch.get("step", "")
+    }
+
+
+
+
+@app.post("/reset-campaign")
+async def reset_campaign():
+    job_status.update({
+        "status": "idle",
+        "progress": 0,
+        "message": "",
+        "job_id": None
+    })
+    return {"message": "Campaign state reset."}
+
 
 
 # ─── Health Check ──────────────────────────────────────────────────
@@ -326,3 +391,11 @@ def test_email_send():
     except Exception as e:
         return {"status": "failed", "error": str(e)}
 
+
+@app.get("/health")
+def health():
+    try:
+        models = client.models.list()
+        return {"status": "ok", "models": [m.id for m in models.data[:2]]}
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
