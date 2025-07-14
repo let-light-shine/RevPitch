@@ -20,7 +20,7 @@ from email.mime.multipart import MIMEMultipart
 from email_utils import send_email, send_summary_email
 from slugify import slugify
 
-# ─── Load .env and Validate ────────────────────────────────────────
+# ─── Setup ─────────────────────────────────────────────────────────
 load_dotenv()
 required_envs = [
     "OPENAI_API_KEY", "ES_USERNAME", "ES_PASSWORD",
@@ -30,12 +30,11 @@ required_envs = [
 for var in required_envs:
     if not os.getenv(var):
         raise EnvironmentError(f"Missing environment variable: {var}")
-
-# ─── Setup ─────────────────────────────────────────────────────────
 logging.basicConfig(level=logging.INFO)
+
 app = FastAPI()
-router = APIRouter()
-app.include_router(router)
+#router = APIRouter()
+#app.include_router(router)  # Ensure router is included
 
 # App state
 app.state.batches = {}
@@ -73,6 +72,9 @@ Write a concise 4-sentence executive summary of these results and next steps.
 """)
 
 # ─── Request Models ────────────────────────────────────────────────
+class SectorInput(BaseModel):
+    sector: str
+
 class CompaniesRequest(BaseModel):
     sector: str
 
@@ -87,15 +89,11 @@ class ContextItem(BaseModel):
 class GenerateEmailsRequest(BaseModel):
     contexts: List[ContextItem]
 
-class AssignEmailsRequest(BaseModel):
-    batch_id: str
-    emails: Dict[str, str]
-
 class SendCampaignRequest(BaseModel):
     batch_id: str
     assigned: Dict[str, str]
 
-# ─── Perplexity Async Fetch ────────────────────────────────────────
+# ─── Helper Functions ──────────────────────────────────────────────
 async def get_company_context_from_perplexity_async(company: str) -> str:
     headers = {
         "Authorization": f"Bearer {os.getenv('PERPLEXITY_API_KEY')}",
@@ -119,8 +117,7 @@ async def get_company_context_from_perplexity_async(company: str) -> str:
         logging.warning(f"Perplexity failed for {company}: {e}")
         return "External challenges could not be retrieved."
 
-# ─── Multi-Index Retriever ─────────────────────────────────────────
-async def multi_index_retriever(company: str, external_ctx: str, indices: list[str]) -> str:
+async def multi_index_retriever(company: str, external_ctx: str, indices: List[str]) -> str:
     docs = []
     for index in indices:
         store = ElasticsearchStore(
@@ -141,162 +138,103 @@ async def multi_index_retriever(company: str, external_ctx: str, indices: list[s
             unique_docs.append(d)
     return "\n\n".join([d.page_content for d in unique_docs])
 
-# ─── Upload Emails ─────────────────────────────────────────────────
-@app.post("/upload-emails")
-async def upload_emails(file: UploadFile = File(...)):
-    df = pd.read_excel(file.file)
-    recipients = df["email"].dropna().tolist()
-    if not recipients:
-        raise HTTPException(400, "No emails found in upload")
-    app.state.recipients = recipients
-    app.state.companies = []
-    app.state.contexts = []
-    app.state.emails = []
-    app.state.results = []
-    return {"count": len(recipients)}
-
-# ─── Discover Companies ────────────────────────────────────────────
-@app.post("/companies")
-async def discover_companies(data: CompaniesRequest):
-    resp = llm.invoke(discover_prompt.format(sector=data.sector))
-    companies = eval(resp.content)
-    app.state.companies = companies
-    app.state.contexts = []
-    app.state.emails = []
-    app.state.results = []
-    return {"companies": companies}
-
-# ─── Fetch Context ─────────────────────────────────────────────────
-@router.post("/context")
-async def fetch_contexts(data: CompanyInput):
-    indices = ["devrev-knowledge-hub", "devrev_yt_100"]
-    tasks = [fetch_context_for_company(company, indices) for company in data.companies]
-    contexts = await asyncio.gather(*tasks)
-
-    app.state.contexts = contexts
-    app.state.emails = []
-    app.state.results = []
-    return {"contexts": contexts}
-
-async def fetch_context_for_company(company: str, indices: list[str]):
-    logging.info(f"Fetching context for {company}")
+async def fetch_context_for_company(company: str, indices: List[str]):
     external_ctx = await get_company_context_from_perplexity_async(company)
     try:
         devrev_ctx = await multi_index_retriever(company, external_ctx, indices)
-        if not devrev_ctx:
-            raise ValueError("No context returned")
-    except Exception as e:
-        logging.warning(f"RAG failed for {company}: {e}")
-        devrev_ctx = (
-            "DevRev is a modern CRM and issue-tracking platform that connects customer issues "
-            "to engineering workstreams, improving responsiveness, alignment, and productivity."
-        )
+    except Exception:
+        devrev_ctx = "DevRev is a modern CRM and issue-tracking platform for connecting customers to engineering."
     return {
         "company": company,
         "external_ctx": external_ctx,
-        "devrev_ctx": devrev_ctx,
+        "devrev_ctx": devrev_ctx
     }
 
-# ─── Generate Emails ───────────────────────────────────────────────
-@app.post("/generate-emails")
-async def generate_emails(data: GenerateEmailsRequest):
+# ─── Campaign Route ────────────────────────────────────────────────
+@app.post("/run-campaign")
+async def run_campaign(data: SectorInput):
+    output = {
+        "step": "init",
+        "status": "running",
+        "error": None,
+        "companies": [],
+        "contexts": [],
+        "emails": {},
+        "assignments": {},
+        "results": [],
+        "metrics": {},
+        "summary": ""
+    }
     try:
+        output["step"] = "discovering_companies"
+        resp = llm.invoke(discover_prompt.format(sector=data.sector))
+        companies = eval(resp.content)
+        if isinstance(companies[0], dict) and "name" in companies[0]:
+            companies = [c["name"] for c in companies]
+        output["companies"] = companies
+
+        output["step"] = "fetching_contexts"
+        indices = ["devrev-knowledge-hub", "devrev_yt_100", "devrev_docs_casestudies"]
+        context_tasks = [fetch_context_for_company(c, indices) for c in companies]
+        contexts = await asyncio.gather(*context_tasks)
+        output["contexts"] = contexts
+
+        output["step"] = "generating_emails"
         emails = {}
-        for ctx in data.contexts:
-            prompt = email_prompt.format(
-                company=ctx.company,
-                external_ctx=ctx.external_ctx.strip(),
-                devrev_ctx=ctx.devrev_ctx.strip()
-            )
+        for ctx in contexts:
+            prompt = email_prompt.format(**ctx)
             resp = llm.invoke(prompt)
-            emails[ctx.company] = resp.content
-        app.state.emails = emails
-        return {"emails": emails}
+            emails[ctx["company"]] = resp.content
+        output["emails"] = emails
+
+        output["step"] = "assigning_emails"
+        assignments = {
+            c: f"{slugify(c)}@licetteam.testinator.com" for c in companies
+        }
+        output["assignments"] = assignments
+
+        output["step"] = "sending_emails"
+        results = []
+        for company, body in emails.items():
+            to_email = assignments[company]
+            subject = f"Opportunities for {company} with DevRev"
+            try:
+                send_email(to_email=to_email, subject=subject, body=body)
+                results.append({"company": company, "to": to_email, "status": "sent"})
+            except Exception as e:
+                results.append({"company": company, "to": to_email, "status": f"failed: {str(e)}"})
+        output["results"] = results
+
+        sent = sum(1 for r in results if r["status"] == "sent")
+        failed = len(results) - sent
+        output["metrics"] = {"total": len(results), "sent": sent, "failed": failed}
+        summary = llm.invoke(summary_prompt.format(total=len(results), sent=sent, failed=failed, rate=(sent/len(results))*100 if results else 0)).content
+        output["summary"] = summary
+
+        output["status"] = "complete"
+        output["step"] = None
     except Exception as e:
-        logging.exception("Failed to generate emails")
-        raise HTTPException(status_code=400, detail=str(e))
-
-# ─── Assign Emails ─────────────────────────────────────────────────
-@app.post("/assign-emails")
-@router.post("/assign-emails")
-async def assign_emails(data: CompanyInput, request: Request):
-    assignments = {}
-    domain = "licetteam.testinator.com"
-
-    for company in data.companies:
-        slug = slugify(company)
-        email = f"{slug}@{domain}"
-        assignments[company] = email
-
-    request.app.state.assignments = assignments
-    return {"assignments": assignments}
-
-
-# ─── Send Campaign ─────────────────────────────────────────────────
-
-config = dotenv_values(".env")
-
-@router.post("/send-campaign")
-async def send_campaign(request: Request):
-    emails = request.app.state.emails
-    assignments = request.app.state.assignments
-
-    results = []
-
-    for entry in emails:
-        company = entry["company"]
-        to_email = assignments.get(company)
-        email_body = entry["email"]
-
-        try:
-            msg = MIMEMultipart()
-            msg["From"] = config["FROM_EMAIL"]
-            msg["To"] = to_email
-            msg["Subject"] = f"Solutions for {company}"
-
-            msg.attach(MIMEText(email_body, "plain"))
-
-            with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
-                server.login(config["FROM_EMAIL"], config["EMAIL_PASSWORD"])
-                server.sendmail(config["FROM_EMAIL"], to_email, msg.as_string())
-
-            results.append({"company": company, "to": to_email, "status": "sent"})
-
-        except Exception as e:
-            results.append({"company": company, "to": to_email, "status": f"failed: {str(e)}"})
-
-    request.app.state.results = results
-    return {"results": results}
-
-
-# ─── Metrics ───────────────────────────────────────────────────────
-@app.get("/metrics")
-async def metrics():
-    results = getattr(app.state, "results", [])
-    total = len(results)
-    sent = sum(1 for r in results if r["status"] == "sent")
-    failed = total - sent
-    return {
-        "total": total,
-        "sent": sent,
-        "failed": failed,
-        "success_rate": (sent / total * 100) if total else 0
-    }
-
-# ─── Campaign Summary ──────────────────────────────────────────────
-@app.post("/campaign-summary")
-async def campaign_summary(background_tasks: BackgroundTasks):
-    m = await metrics()
-    summary = llm.invoke(summary_prompt.format(**m)).content
-    background_tasks.add_task(
-        send_summary_email,
-        to_email=os.getenv("MY_EMAIL"),
-        from_email=os.getenv("FROM_EMAIL"),
-        summary=summary
-    )
-    return {"report": summary}
+        output["status"] = "failed"
+        output["error"] = str(e)
+        logging.exception("Campaign failed")
+    return output
 
 # ─── Health Check ──────────────────────────────────────────────────
 @app.get("/")
 def health():
     return {"status": "running"}
+
+
+@app.post("/test-email")
+def test_email_send():
+    from email_utils import send_email
+    try:
+        send_email(
+            to_email="your@email.com",  # 🔁 Replace with your test recipient
+            subject="Test Email from FastAPI",
+            body="This is a test email sent from the /test-email endpoint."
+        )
+        return {"status": "success", "message": "Email sent successfully."}
+    except Exception as e:
+        return {"status": "failed", "error": str(e)}
+
