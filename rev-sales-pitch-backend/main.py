@@ -5,6 +5,7 @@ import logging
 import httpx
 import pandas as pd
 from typing import List, Dict
+import datetime
 
 from fastapi import FastAPI, File, UploadFile, BackgroundTasks, HTTPException, APIRouter, Request
 from pydantic import BaseModel
@@ -19,6 +20,7 @@ from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from email_utils import send_email, send_summary_email
 from slugify import slugify
+
 
 # ─── Setup ─────────────────────────────────────────────────────────
 load_dotenv()
@@ -156,6 +158,7 @@ async def run_campaign(data: SectorInput):
     output = {
         "step": "init",
         "status": "running",
+        "timestamp": str(datetime.datetime.now()),
         "error": None,
         "companies": [],
         "contexts": [],
@@ -165,35 +168,53 @@ async def run_campaign(data: SectorInput):
         "metrics": {},
         "summary": ""
     }
+
     try:
+        print("🚀 [START] Running campaign...")
+        logging.info("🔍 Discovering companies...")
         output["step"] = "discovering_companies"
+
         resp = llm.invoke(discover_prompt.format(sector=data.sector))
         companies = eval(resp.content)
         if isinstance(companies[0], dict) and "name" in companies[0]:
             companies = [c["name"] for c in companies]
         output["companies"] = companies
+        print(f"✅ Companies discovered: {companies}")
 
         output["step"] = "fetching_contexts"
+        logging.info("📚 Fetching contexts...")
+        print("⏳ Fetching contexts from Perplexity and Elasticsearch...")
+
         indices = ["devrev-knowledge-hub", "devrev_yt_100", "devrev_docs_casestudies"]
         context_tasks = [fetch_context_for_company(c, indices) for c in companies]
         contexts = await asyncio.gather(*context_tasks)
         output["contexts"] = contexts
+        print("✅ Contexts fetched")
 
         output["step"] = "generating_emails"
+        logging.info("✍️ Generating emails...")
+        print("⏳ Generating personalized emails...")
+
         emails = {}
         for ctx in contexts:
             prompt = email_prompt.format(**ctx)
             resp = llm.invoke(prompt)
             emails[ctx["company"]] = resp.content
         output["emails"] = emails
+        print("✅ Emails generated")
 
         output["step"] = "assigning_emails"
+        logging.info("📧 Assigning recipient email addresses...")
         assignments = {
             c: f"{slugify(c)}@licetteam.testinator.com" for c in companies
         }
         output["assignments"] = assignments
+        print(f"✅ Emails assigned: {assignments}")
 
         output["step"] = "sending_emails"
+        logging.info("📨 Sending emails...")
+        print("⏳ Sending emails...")
+
         results = []
         for company, body in emails.items():
             to_email = assignments[company]
@@ -201,23 +222,41 @@ async def run_campaign(data: SectorInput):
             try:
                 send_email(to_email=to_email, subject=subject, body=body)
                 results.append({"company": company, "to": to_email, "status": "sent"})
+                print(f"✅ Email sent to {company} ({to_email})")
             except Exception as e:
+                error_msg = f"❌ Failed to send to {company} ({to_email}): {str(e)}"
+                logging.warning(error_msg)
                 results.append({"company": company, "to": to_email, "status": f"failed: {str(e)}"})
-        output["results"] = results
+                print(error_msg)
 
+        output["results"] = results
         sent = sum(1 for r in results if r["status"] == "sent")
         failed = len(results) - sent
         output["metrics"] = {"total": len(results), "sent": sent, "failed": failed}
-        summary = llm.invoke(summary_prompt.format(total=len(results), sent=sent, failed=failed, rate=(sent/len(results))*100 if results else 0)).content
+
+        logging.info(f"📊 Email Results: Sent = {sent}, Failed = {failed}")
+        print(f"📊 Email Results: Sent = {sent}, Failed = {failed}")
+
+        summary = llm.invoke(
+            summary_prompt.format(
+                total=len(results), sent=sent, failed=failed, rate=(sent / len(results)) * 100 if results else 0
+            )
+        ).content
         output["summary"] = summary
 
         output["status"] = "complete"
         output["step"] = None
+        print("✅ Campaign completed successfully")
+
     except Exception as e:
         output["status"] = "failed"
         output["error"] = str(e)
-        logging.exception("Campaign failed")
+        logging.exception("❌ Campaign failed with error")
+        print(f"❌ Campaign failed: {str(e)}")
+
     return output
+
+
 
 # ─── Health Check ──────────────────────────────────────────────────
 @app.get("/")
