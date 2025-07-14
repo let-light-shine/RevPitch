@@ -6,6 +6,7 @@ import pandas as pd
 from typing import List, Dict
 import datetime
 from uuid import uuid4
+from fastapi.responses import JSONResponse
 
 from fastapi import FastAPI, File, UploadFile, BackgroundTasks, HTTPException, APIRouter, Request
 from pydantic import BaseModel
