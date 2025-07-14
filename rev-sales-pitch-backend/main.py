@@ -346,7 +346,23 @@ async def run_actual_campaign(sector: str, job_id: str):
 def campaign_status():
     job_id = getattr(app.state, "current_job_id", None)
     if not job_id or job_id not in app.state.batches:
-        return {"status": "idle", "progress": 0, "message": "", "job_id": None}
+        return {
+            "status": "idle",
+            "progress": 0,
+            "message": "",
+            "job_id": None,
+            "step": None,
+            "output": {
+                "results": [],
+                "companies": [],
+                "contexts": [],
+                "emails": {},
+                "assignments": {},
+                "metrics": {},
+                "summary": "",
+                "error": None
+            }
+        }
 
     batch = app.state.batches[job_id]
     return {
@@ -354,8 +370,19 @@ def campaign_status():
         "progress": 100 if batch["status"] == "complete" else 0,
         "message": f"Campaign for {job_id} {'completed' if batch['status'] == 'complete' else 'in progress'}.",
         "job_id": job_id,
-        "step": batch.get("step", "")
+        "step": batch.get("step", ""),
+        "output": batch.get("output", {
+            "results": [],
+            "companies": [],
+            "contexts": [],
+            "emails": {},
+            "assignments": {},
+            "metrics": {},
+            "summary": "",
+            "error": None
+        })
     }
+
 
 
 
