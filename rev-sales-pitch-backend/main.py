@@ -1,11 +1,11 @@
 import os
-import uuid
 import asyncio
 import logging
 import httpx
 import pandas as pd
 from typing import List, Dict
 import datetime
+from uuid import uuid4
 
 from fastapi import FastAPI, File, UploadFile, BackgroundTasks, HTTPException, APIRouter, Request
 from pydantic import BaseModel
@@ -151,9 +151,18 @@ async def fetch_context_for_company(company: str, indices: List[str]):
         "external_ctx": external_ctx,
         "devrev_ctx": devrev_ctx
     }
+@app.post("/start-campaign")
+async def start_campaign(data: SectorInput, background_tasks: BackgroundTasks):
+    job_id = str(uuid4())
+    app.state.batches[job_id] = {"status": "running", "step": "starting"}
+    background_tasks.add_task(run_campaign_job, job_id, data.sector)
+    return {"job_id": job_id, "status": "started"}
 
+async def run_campaign_job(job_id: str, sector: str):
+    result = await run_campaign(SectorInput(sector=sector))
+    app.state.batches[job_id] = result
+    
 # ─── Campaign Route ────────────────────────────────────────────────
-@app.post("/run-campaign")
 async def run_campaign(data: SectorInput):
     output = {
         "step": "init",
@@ -178,6 +187,8 @@ async def run_campaign(data: SectorInput):
         companies = eval(resp.content)
         if isinstance(companies[0], dict) and "name" in companies[0]:
             companies = [c["name"] for c in companies]
+
+        companies = companies[:2]  # ✅ TEMP: Limit to 2 companies
         output["companies"] = companies
         print(f"✅ Companies discovered: {companies}")
 
@@ -220,9 +231,9 @@ async def run_campaign(data: SectorInput):
             to_email = assignments[company]
             subject = f"Opportunities for {company} with DevRev"
             try:
-                send_email(to_email=to_email, subject=subject, body=body)
+                # send_email(to_email=to_email, subject=subject, body=body)  # 🔁 TEMP: Commented for testing
+                print(f"✅ (MOCKED) Email sent to {company} ({to_email})")
                 results.append({"company": company, "to": to_email, "status": "sent"})
-                print(f"✅ Email sent to {company} ({to_email})")
             except Exception as e:
                 error_msg = f"❌ Failed to send to {company} ({to_email}): {str(e)}"
                 logging.warning(error_msg)
@@ -251,11 +262,22 @@ async def run_campaign(data: SectorInput):
     except Exception as e:
         output["status"] = "failed"
         output["error"] = str(e)
+        output["step"] = "error"
         logging.exception("❌ Campaign failed with error")
         print(f"❌ Campaign failed: {str(e)}")
 
     return output
 
+
+
+@app.get("/campaign-status/{job_id}")
+def get_campaign_status(job_id: str):
+    logging.info(f"Checking campaign status for job_id: {job_id}")
+    job = app.state.batches.get(job_id)
+    if not job:
+        logging.warning(f"No job found for job_id: {job_id}")
+        raise HTTPException(status_code=404, detail="Job ID not found.")
+    return job
 
 
 # ─── Health Check ──────────────────────────────────────────────────
@@ -269,7 +291,7 @@ def test_email_send():
     from email_utils import send_email
     try:
         send_email(
-            to_email="your@email.com",  # 🔁 Replace with your test recipient
+            to_email="your@email.com",  
             subject="Test Email from FastAPI",
             body="This is a test email sent from the /test-email endpoint."
         )
