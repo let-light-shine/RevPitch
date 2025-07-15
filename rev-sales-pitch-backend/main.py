@@ -10,6 +10,7 @@ import datetime
 from typing import List, Dict
 from uuid import uuid4
 import json
+import re
 
 from fastapi import FastAPI, File, UploadFile, BackgroundTasks, HTTPException, APIRouter, Request
 from fastapi.responses import JSONResponse
@@ -186,6 +187,16 @@ async def fetch_context_for_company(company: str, indices: List[str]):
         "devrev_ctx": devrev_ctx
     }
 
+def extract_subject_and_body(email_text: str):
+    """Extracts the subject if it's in 'Subject: ...' format and returns both subject and cleaned body."""
+    subject_match = re.search(r'^Subject:\s*(.*)', email_text, re.MULTILINE)
+    subject = subject_match.group(1).strip() if subject_match else None
+
+    # Remove the subject line from the body if found
+    if subject:
+        email_text = re.sub(r'^Subject:.*\n', '', email_text, count=1).strip()
+    return subject, email_text
+
 
 
 @app.post("/start-campaign")
@@ -303,12 +314,40 @@ async def run_actual_campaign(sector: str, job_id: str):
         print("⏳ Sending emails...")
 
         results = []
-        for company, body in emails.items():
+        for company, raw_body in emails.items():
             to_email = assignments[company]
-            subject = f"Opportunities for {company} with DevRev"
+
+            # Extract subject and body if specified inside the LLM output
+            subject_extracted, email_body = extract_subject_and_body(raw_body)
+            subject = subject_extracted or f"Opportunities for {company} with DevRev"
+
+            # Clean placeholder content and trailing sign-offs
+            signature = "\n\nBest regards,\nJohn Doe\nDevRev Sales Team"
+
+            # Define patterns to remove
+            placeholder_patterns = [
+                r"(?i)^looking forward to.*",
+                r"(?i)^best( regards)?,?.*",
+                r"(?i)^\[.*\]$",                    # Any line like [Your Name], [Your Contact Info], etc.
+                r"(?i)^insert.*",                   # Insert your name, insert your title, etc.
+                r"(?i)^devrev.*"
+            ]
+
+            # Strip out lines matching any placeholder pattern
+            email_lines = email_body.strip().splitlines()
+            cleaned_lines = []
+            for line in email_lines:
+                if any(re.match(pat, line.strip()) for pat in placeholder_patterns):
+                    continue
+                cleaned_lines.append(line)
+            cleaned_body = "\n".join(cleaned_lines).strip()
+
+            # Add final static signature
+            full_body = cleaned_body + signature
+            
             try:
-                send_email(to_email=to_email, subject=subject, body=body)  # 🔁 Enable this when live
-                print(f"✅ (MOCKED) Email sent to {company} ({to_email})")
+                send_email(to_email=to_email, subject=subject, body=full_body)
+                print(f"✅ Email sent to {company} ({to_email})")
                 results.append({"company": company, "to": to_email, "status": "sent"})
             except Exception as e:
                 error_msg = f"❌ Failed to send to {company} ({to_email}): {str(e)}"
@@ -351,6 +390,8 @@ async def run_actual_campaign(sector: str, job_id: str):
         "output": output
     }
     return output
+
+
 
 
 
