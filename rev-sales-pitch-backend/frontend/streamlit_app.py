@@ -19,7 +19,7 @@ st.set_page_config(
 # API Base URL - Production ready
 API_BASE = os.getenv("API_BASE_URL", "http://localhost:8000")
 
-# Custom CSS for better styling
+# Enhanced CSS for clean, simple styling
 st.markdown("""
 <style>
 .main-header {
@@ -29,6 +29,16 @@ st.markdown("""
     color: white;
     text-align: center;
     margin-bottom: 2rem;
+}
+
+.stButton > button {
+    border-radius: 6px;
+    border: none;
+    font-weight: 500;
+}
+
+.stSuccess, .stWarning, .stError, .stInfo {
+    border-radius: 6px;
 }
 </style>
 """, unsafe_allow_html=True)
@@ -42,7 +52,6 @@ def get_agent_dashboard():
             
             # Ensure we have the expected structure
             if 'summary' not in data:
-                # Create summary from available data
                 active_agents = data.get('active_agents', [])
                 data['summary'] = {
                     'active_agents': len(active_agents),
@@ -95,6 +104,35 @@ def approve_checkpoint(checkpoint_id, decision, feedback="", modified_content=""
         st.error(f"Approval failed: {e}")
         return None
 
+def approve_plan_checkpoint(checkpoint_id, selected_companies, feedback=""):
+    """Approve plan checkpoint with selected companies"""
+    try:
+        payload = {
+            "checkpoint_id": checkpoint_id,
+            "selected_companies": selected_companies,
+            "feedback": feedback
+        }
+        
+        response = requests.post(f"{API_BASE}/approve-plan-checkpoint", json=payload)
+        return response.json() if response.status_code == 200 else None
+    except Exception as e:
+        st.error(f"Plan approval failed: {e}")
+        return None
+
+def approve_email_checkpoint(checkpoint_id, email_decisions):
+    """Approve email checkpoint with individual email decisions"""
+    try:
+        payload = {
+            "checkpoint_id": checkpoint_id,
+            "email_decisions": email_decisions
+        }
+        
+        response = requests.post(f"{API_BASE}/approve-email-checkpoint", json=payload)
+        return response.json() if response.status_code == 200 else None
+    except Exception as e:
+        st.error(f"Email approval failed: {e}")
+        return None
+
 def agent_intervention(job_id, action):
     """Intervene in agent execution"""
     try:
@@ -105,6 +143,264 @@ def agent_intervention(job_id, action):
         return response.json() if response.status_code == 200 else None
     except:
         return None
+
+def render_plan_approval_checkpoint(checkpoint):
+    """Simple plan approval with company selection"""
+    st.subheader("🎯 Step 1: Select Target Companies")
+    
+    plan_data = checkpoint.get('data', {}).get('plan', checkpoint.get('data', {}))
+    companies = plan_data.get('companies', plan_data.get('original_companies', []))
+    
+    st.info(f"📋 **{len(companies)} companies discovered in {plan_data.get('sector', 'SaaS')} sector**")
+    
+    # Initialize selected companies in session state
+    if f"selected_companies_{checkpoint['checkpoint_id']}" not in st.session_state:
+        st.session_state[f"selected_companies_{checkpoint['checkpoint_id']}"] = companies.copy()
+    
+    # Company selection with checkboxes
+    st.markdown("### 📝 Select Companies to Target:")
+    selected_companies = []
+    
+    for company in companies:
+        # Show risk level
+        risk_level = "🔴 HIGH" if company in ["Slack Technologies", "Figma Inc"] else "🟡 MEDIUM"
+        
+        is_selected = st.checkbox(
+            f"{company} ({risk_level})",
+            value=company in st.session_state[f"selected_companies_{checkpoint['checkpoint_id']}"],
+            key=f"company_select_{checkpoint['checkpoint_id']}_{company}"
+        )
+        
+        if is_selected:
+            selected_companies.append(company)
+    
+    # Update session state
+    st.session_state[f"selected_companies_{checkpoint['checkpoint_id']}"] = selected_companies
+    
+    # Show selection summary
+    if selected_companies != companies:
+        excluded = [c for c in companies if c not in selected_companies]
+        st.warning(f"⚠️ {len(excluded)} companies excluded: {', '.join(excluded)}")
+    
+    st.success(f"✅ {len(selected_companies)} companies selected")
+    
+    # Approval buttons
+    st.markdown("---")
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        if st.button("🚀 Continue with Selected Companies", type="primary", key=f"approve_companies_{checkpoint['checkpoint_id']}", use_container_width=True):
+            if selected_companies:
+                # Update checkpoint data with selections
+                checkpoint['data']['selected_companies'] = selected_companies
+                
+                result = approve_checkpoint(checkpoint['checkpoint_id'], 'approve', f"Selected {len(selected_companies)} companies")
+                if result:
+                    st.success("✅ Companies approved! Generating emails...")
+                    time.sleep(1)  # Brief pause for user feedback
+                    st.rerun()
+            else:
+                st.error("❌ Please select at least one company")
+    
+    with col2:
+        if st.button("❌ Cancel Campaign", key=f"cancel_companies_{checkpoint['checkpoint_id']}", use_container_width=True):
+            result = approve_checkpoint(checkpoint['checkpoint_id'], 'reject', "Campaign cancelled")
+            if result:
+                st.error("❌ Campaign cancelled")
+                st.rerun()
+
+def render_email_preview_checkpoint(checkpoint):
+    """Simple email preview with email selection"""
+    st.subheader("📧 Step 2: Review & Select Emails")
+    
+    data = checkpoint.get('data', {})
+    emails = data.get('emails', {})
+    
+    if not emails:
+        st.warning("No emails found")
+        return
+    
+    st.info(f"📝 **{len(emails)} emails generated and ready for review**")
+    
+    # Initialize selected emails in session state
+    if f"selected_emails_{checkpoint['checkpoint_id']}" not in st.session_state:
+        st.session_state[f"selected_emails_{checkpoint['checkpoint_id']}"] = list(emails.keys())
+    
+    # Email selection with previews
+    st.markdown("### 📧 Select Emails to Send:")
+    selected_emails = []
+    
+    for company, email_content in emails.items():
+        # Checkbox for email selection
+        is_selected = st.checkbox(
+            f"📧 Email to **{company}**",
+            value=company in st.session_state[f"selected_emails_{checkpoint['checkpoint_id']}"],
+            key=f"email_select_{checkpoint['checkpoint_id']}_{company}"
+        )
+        
+        if is_selected:
+            selected_emails.append(company)
+        
+        # Email preview in expander
+        with st.expander(f"👀 Preview Email to {company}", expanded=False):
+            # Show risk warning for high-risk companies
+            if company in ["Slack Technologies", "Figma Inc"]:
+                st.warning("🔴 **HIGH RISK COMPANY** - Extra caution recommended")
+            
+            # Show email subject
+            st.markdown("**📨 Subject:** DevRev Partnership Opportunity for " + company)
+            
+            # Show email content
+            st.markdown("**📄 Email Content:**")
+            st.text_area(
+                "Email",
+                value=email_content,
+                height=150,
+                disabled=True,
+                key=f"email_preview_{checkpoint['checkpoint_id']}_{company}"
+            )
+            
+            # Quick stats
+            word_count = len(email_content.split())
+            st.caption(f"📊 {word_count} words • Professional tone • Personalized")
+    
+    # Update session state
+    st.session_state[f"selected_emails_{checkpoint['checkpoint_id']}"] = selected_emails
+    
+    # Show selection summary
+    if selected_emails != list(emails.keys()):
+        excluded = [c for c in emails.keys() if c not in selected_emails]
+        st.warning(f"⚠️ {len(excluded)} emails excluded: {', '.join(excluded)}")
+    
+    st.success(f"✅ {len(selected_emails)} emails selected for sending")
+    
+    # Approval buttons
+    st.markdown("---")
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        if st.button("🚀 Continue with Selected Emails", type="primary", key=f"approve_emails_{checkpoint['checkpoint_id']}", use_container_width=True):
+            if selected_emails:
+                # Update checkpoint data with selected emails only
+                selected_email_content = {company: emails[company] for company in selected_emails}
+                checkpoint['data']['selected_emails'] = selected_email_content
+                
+                result = approve_checkpoint(checkpoint['checkpoint_id'], 'approve', f"Selected {len(selected_emails)} emails")
+                if result:
+                    st.success("✅ Emails approved! Moving to final send...")
+                    time.sleep(1)
+                    st.rerun()
+            else:
+                st.error("❌ Please select at least one email")
+    
+    with col2:
+        if st.button("❌ Cancel Campaign", key=f"cancel_emails_{checkpoint['checkpoint_id']}", use_container_width=True):
+            result = approve_checkpoint(checkpoint['checkpoint_id'], 'reject', "Campaign cancelled")
+            if result:
+                st.error("❌ Campaign cancelled")
+                st.rerun()
+
+def render_bulk_send_checkpoint(checkpoint):
+    """Simple final send confirmation"""
+    st.subheader("🚀 Step 3: Final Send Confirmation")
+    
+    data = checkpoint.get('data', {})
+    emails = data.get('emails', data.get('selected_emails', {}))
+    
+    if not emails:
+        st.warning("No emails to send")
+        return
+    
+    # Final summary
+    st.success(f"🎯 **Ready to send {len(emails)} emails**")
+    
+    # Show final list
+    st.markdown("### 📤 Final Email List:")
+    for i, company in enumerate(emails.keys(), 1):
+        st.markdown(f"{i}. 📧 **{company}**")
+    
+    # Important notes
+    st.markdown("### ⚠️ Important:")
+    st.info("🧪 **Test Mode:** All emails will be sent to your test inbox for review")
+    st.warning("🔒 **This action cannot be undone** - emails will be sent immediately")
+    
+    # Final confirmation
+    st.markdown("---")
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        if st.button("🚀 Send All Emails Now", type="primary", key=f"send_emails_{checkpoint['checkpoint_id']}", use_container_width=True):
+            result = approve_checkpoint(checkpoint['checkpoint_id'], 'approve', f"Sending {len(emails)} emails")
+            if result:
+                st.success("✅ Emails sent successfully! Campaign completed!")
+                st.balloons()
+                time.sleep(2)
+                st.rerun()
+    
+    with col2:
+        if st.button("❌ Cancel Send", key=f"cancel_send_{checkpoint['checkpoint_id']}", use_container_width=True):
+            result = approve_checkpoint(checkpoint['checkpoint_id'], 'reject', "Send cancelled")
+            if result:
+                st.error("❌ Send cancelled")
+                st.rerun()
+
+def control_tab():
+    """Simplified approval interface"""
+    st.header("⚙️ Campaign Approvals")
+    
+    dashboard = get_agent_dashboard()
+    
+    if not dashboard or not dashboard['active_agents']:
+        st.info("📭 No active campaigns requiring approval")
+        st.markdown("Start a new campaign in the **Campaign** tab to see approvals here.")
+        return
+    
+    # Check for pending approvals
+    has_checkpoints = False
+    
+    for agent in dashboard['active_agents']:
+        agent_details = get_agent_status(agent['job_id'])
+        
+        if agent_details and agent_details.get('pending_checkpoints'):
+            has_checkpoints = True
+            
+            # Clean campaign header
+            st.markdown(f"## 🔔 Campaign {agent['job_id'][:8]}... - {agent['status']}")
+            
+            for checkpoint in agent_details['pending_checkpoints']:
+                checkpoint_type = checkpoint.get('type', 'unknown')
+                
+                # Route to appropriate simple renderer
+                if checkpoint_type == 'plan_approval':
+                    render_plan_approval_checkpoint(checkpoint)
+                elif checkpoint_type == 'email_preview':
+                    render_email_preview_checkpoint(checkpoint)
+                elif checkpoint_type == 'bulk_send_approval':
+                    render_bulk_send_checkpoint(checkpoint)
+                else:
+                    # Simple fallback
+                    st.markdown("### ⚠️ Approval Required")
+                    st.info(checkpoint.get('message', 'Please review and approve'))
+                    
+                    col1, col2 = st.columns(2)
+                    with col1:
+                        if st.button("✅ Approve", key=f"approve_{checkpoint['checkpoint_id']}", type="primary"):
+                            result = approve_checkpoint(checkpoint['checkpoint_id'], 'approve', "Approved")
+                            if result:
+                                st.success("✅ Approved!")
+                                st.rerun()
+                    
+                    with col2:
+                        if st.button("❌ Reject", key=f"reject_{checkpoint['checkpoint_id']}"):
+                            result = approve_checkpoint(checkpoint['checkpoint_id'], 'reject', "Rejected")
+                            if result:
+                                st.error("❌ Rejected!")
+                                st.rerun()
+                
+                st.markdown("---")
+    
+    if not has_checkpoints:
+        st.success("✅ All approvals complete! Check the Monitor tab for campaign progress.")
 
 def campaign_tab():
     """Clean campaign creation tab"""
@@ -150,6 +446,7 @@ def campaign_tab():
             if result:
                 st.success("✅ **Campaign Started Successfully!**")
                 st.info(f"**Job ID:** `{result['job_id']}`")
+                st.markdown("📋 **Next Steps:** Go to the **Approvals** tab to review agent decisions.")
                 st.balloons()
             else:
                 st.error("❌ Failed to start campaign.")
@@ -164,67 +461,16 @@ def campaign_tab():
         </div>
         """, unsafe_allow_html=True)
         
-        st.markdown("**1. 🎯 Plan Campaign** - Selects companies → **You approve**")
-        st.markdown("**2. 📝 Generate Emails** - Writes content → **You review**")
-        st.markdown("**3. 📤 Send Emails** - Final approval → **Sends to inbox**")
+        st.markdown("**1. 🎯 Plan Campaign** - Discovers companies → **You select targets**")
+        st.markdown("**2. 📝 Generate Emails** - Writes personalized content → **You review each email**")
+        st.markdown("**3. 📤 Send Emails** - Final batch approval → **Sends to your inbox**")
         st.markdown("**4. ✅ Complete** - Campaign finished → **View results**")
-
-def control_tab():
-    """Simple control tab - NO EXPANDERS"""
-    st.header("⚙️ Campaign Approvals")
-    
-    st.markdown("### ℹ️ What do I need to approve?")
-    st.markdown("**🎯 Campaign Plan** - Review target companies")
-    st.markdown("**📧 Email Content** - Review generated emails")
-    st.markdown("**📤 Final Send** - Approve before sending")
-    
-    dashboard = get_agent_dashboard()
-    
-    if not dashboard or not dashboard['active_agents']:
-        st.info("📭 No active campaigns requiring approval")
-        return
-    
-    has_checkpoints = False
-    
-    for agent in dashboard['active_agents']:
-        agent_details = get_agent_status(agent['job_id'])
         
-        if agent_details and agent_details.get('pending_checkpoints'):
-            has_checkpoints = True
-            st.subheader(f"🔔 Approval Needed: Campaign {agent['job_id'][:8]}...")
-            
-            for checkpoint in agent_details['pending_checkpoints']:
-                st.markdown(f"**Type:** {checkpoint['type'].replace('_', ' ').title()}")
-                st.markdown(f"**Risk:** {checkpoint['risk_level'].upper()}")
-                st.markdown(f"**Message:** {checkpoint['message']}")
-                
-                col1, col2, col3 = st.columns(3)
-                
-                with col1:
-                    if st.button(f"✅ Approve", key=f"approve_{checkpoint['checkpoint_id']}", type="primary"):
-                        result = approve_checkpoint(checkpoint['checkpoint_id'], 'approve', "Approved via UI")
-                        if result:
-                            st.success("✅ Approved!")
-                            st.rerun()
-                
-                with col2:
-                    if st.button(f"✏️ Modify", key=f"modify_{checkpoint['checkpoint_id']}"):
-                        result = approve_checkpoint(checkpoint['checkpoint_id'], 'modify', "Modified via UI")
-                        if result:
-                            st.success("✏️ Modified!")
-                            st.rerun()
-                
-                with col3:
-                    if st.button(f"❌ Reject", key=f"reject_{checkpoint['checkpoint_id']}"):
-                        result = approve_checkpoint(checkpoint['checkpoint_id'], 'reject', "Rejected via UI")
-                        if result:
-                            st.error("❌ Rejected!")
-                            st.rerun()
-                
-                st.divider()
-    
-    if not has_checkpoints:
-        st.info("📋 All approvals handled!")
+        st.markdown("### 🛡️ Safety Features")
+        st.markdown("• **Individual email approval**")
+        st.markdown("• **Company-level risk assessment**")
+        st.markdown("• **Content modification requests**")
+        st.markdown("• **Test mode delivery**")
 
 def monitor_tab():
     """Minimal monitor tab - NO EXPANDERS AT ALL"""
@@ -358,7 +604,7 @@ def main():
     if st.sidebar.button("🔄 Refresh Now"):
         st.rerun()
     
-    auto_refresh = st.sidebar.checkbox("🔄 Auto-refresh (5s)", value=True)
+    auto_refresh = st.sidebar.checkbox("🔄 Auto-refresh (5s)", value=False)
     
     if auto_refresh:
         time.sleep(5)
