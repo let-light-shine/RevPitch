@@ -344,7 +344,6 @@ async def run_actual_campaign(sector: str, job_id: str):
 
             # Add final static signature
             full_body = cleaned_body + signature
-            
             try:
                 send_email(to_email=to_email, subject=subject, body=full_body)
                 print(f"✅ Email sent to {company} ({to_email})")
