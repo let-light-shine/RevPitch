@@ -1,0 +1,5 @@
+# frontend/requirements.txt - Maximum compatibility
+streamlit
+plotly
+pandas
+requests

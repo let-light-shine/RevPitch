@@ -8,7 +8,7 @@ pydantic
 # File uploads & Excel/CSV handling
 python-multipart
 pandas
-openpyxl         # For reading Excel (.xlsx) files
+openpyxl # For reading Excel (.xlsx) files
 
 # Environment variable loading
 python-dotenv
@@ -33,3 +33,13 @@ tenacity
 
 # Slugify company names for email generation
 python-slugify
+
+# NEW: Agent system dependencies
+dataclasses-json  # For serializing agent state
+asyncio  # Already in Python 3.7+, but explicit for clarity
+typing-extensions  # Enhanced typing support
+python-dateutil  # Better datetime handling
+
+# NEW: Enhanced logging and monitoring
+structlog  # Better structured logging for agent activities
+psutil  # System monitoring (optional, for performance metrics)

@@ -1,0 +1,28 @@
+# backend/render.yaml
+services:
+  - type: web
+    name: revreach-agent-api
+    env: python
+    plan: starter
+    region: oregon
+    buildCommand: pip install -r requirements.txt
+    startCommand: gunicorn main:app -w 2 -k uvicorn.workers.UvicornWorker --bind 0.0.0.0:$PORT
+    envVars:
+      - key: ENVIRONMENT
+        value: production
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: ES_USERNAME
+        sync: false
+      - key: ES_PASSWORD
+        sync: false
+      - key: FROM_EMAIL
+        sync: false
+      - key: MY_EMAIL
+        sync: false
+      - key: EMAIL_PASSWORD
+        sync: false
+      - key: PERPLEXITY_API_KEY
+        sync: false
+      - key: FRONTEND_URL
+        value: https://revreach-agent-ui.onrender.com

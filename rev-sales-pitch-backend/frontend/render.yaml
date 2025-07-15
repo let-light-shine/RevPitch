@@ -1,0 +1,12 @@
+# frontend/render.yaml
+services:
+  - type: web
+    name: revreach-agent-ui
+    env: python
+    plan: starter
+    region: oregon
+    buildCommand: pip install -r requirements.txt
+    startCommand: streamlit run streamlit_app.py --server.port $PORT --server.address 0.0.0.0 --server.headless true --server.enableCORS false
+    envVars:
+      - key: API_BASE_URL
+        value: https://revreach-agent-api.onrender.com
