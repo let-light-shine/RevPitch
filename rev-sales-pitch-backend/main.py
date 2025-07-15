@@ -9,6 +9,7 @@ import pandas as pd
 import datetime
 from typing import List, Dict
 from uuid import uuid4
+import json
 
 from fastapi import FastAPI, File, UploadFile, BackgroundTasks, HTTPException, APIRouter, Request
 from fastapi.responses import JSONResponse
@@ -438,3 +439,35 @@ def health():
         return {"status": "ok", "models": [m.id for m in models.data[:2]]}
     except Exception as e:
         return {"status": "error", "message": str(e)}
+    
+
+@app.get("/campaign-step")
+def get_campaign_step():
+    job_id = getattr(app.state, "current_job_id", None)
+    if not job_id or job_id not in app.state.batches:
+        return {"status": "idle", "step": None, "progress": 0, "job_id": None}
+    
+    batch = app.state.batches[job_id]
+    step = batch.get("step", "starting")
+    status = batch.get("status", "running")
+
+    # Progress mapping
+    progress_map = {
+        "starting": 10,
+        "discovering_companies": 20,
+        "fetching_contexts": 40,
+        "generating_emails": 60,
+        "assigning_emails": 75,
+        "sending_emails": 90,
+        "complete": 100,
+        "completed": 100,
+        "failed": 100
+    }
+
+    return {
+        "status": status,
+        "step": step,
+        "progress": progress_map.get(step, 0),
+        "job_id": job_id
+    }
+
