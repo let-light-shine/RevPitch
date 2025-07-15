@@ -70,7 +70,9 @@ llm = ChatOpenAI(model="gpt-4", temperature=0.2, openai_api_key=os.getenv("OPENA
 embedding_model = OpenAIEmbeddings(openai_api_key=os.getenv("OPENAI_API_KEY"))
 
 # ─── Prompt Templates ──────────────────────────────────────────────
-discover_prompt = PromptTemplate.from_template("List the top 10 companies in the {sector} sector as a JSON array.")
+discover_prompt = PromptTemplate.from_template(
+    "Return only a valid JSON array of 10 company names in the {sector} sector. No explanation. Format: [\"Company A\", \"Company B\", ...]"
+)
 email_prompt = PromptTemplate.from_template("""
 You are a friendly, concise sales-outreach assistant at DevRev. 
 Given the following context for {company}:
@@ -240,7 +242,17 @@ async def run_actual_campaign(sector: str, job_id: str):
         output["step"] = "discovering_companies"
 
         resp = await retry_llm_invoke(discover_prompt.format(sector=sector))
-        companies = ast.literal_eval(resp.content)
+        raw = resp.content.strip()
+
+        try:
+            companies = json.loads(raw)
+        except json.JSONDecodeError:
+            try:
+                companies = ast.literal_eval(raw)
+            except Exception as e:
+                logging.error(f"Failed to parse company list from LLM. Raw:\n{raw}")
+                raise ValueError("❌ LLM response not in list format. Update prompt or parser.") from e
+
         if isinstance(companies[0], dict) and "name" in companies[0]:
             companies = [c["name"] for c in companies]
 
