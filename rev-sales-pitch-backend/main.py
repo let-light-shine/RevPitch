@@ -14,7 +14,7 @@ import re
 
 from fastapi import FastAPI, File, UploadFile, BackgroundTasks, HTTPException, APIRouter, Request
 from fastapi.responses import JSONResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, EmailStr
 from dotenv import load_dotenv
 from slugify import slugify
 
@@ -49,6 +49,7 @@ from email_utils import send_email, send_summary_email
 from pydantic import BaseModel
 class CampaignRequest(BaseModel):
     sector: str
+    recipient_email: EmailStr
 
 
 # ✅ LangChain LLM and embeddings setup (used across campaign)
@@ -209,10 +210,8 @@ async def start_campaign(request: Request, payload: CampaignRequest):
         "output": {},
     }
 
-    asyncio.create_task(run_actual_campaign(payload.sector, job_id))
+    asyncio.create_task(run_actual_campaign(payload.sector, job_id, payload.recipient_email))
     return {"message": f"Campaign for {payload.sector} started.", "job_id": job_id}
-
-
 
 
 #async def run_campaign_job(job_id: str, sector: str):
@@ -233,7 +232,7 @@ async def retry_llm_invoke(prompt: str, retries: int = 3, delay: float = 5):
     raise Exception("🚨 Exceeded retry limit for OpenAI LLM.")
 
 
-async def run_actual_campaign(sector: str, job_id: str):
+async def run_actual_campaign(sector: str, job_id: str, recipient_email: str):
     output = {
         "step": "init",
         "status": "running",
@@ -303,11 +302,12 @@ async def run_actual_campaign(sector: str, job_id: str):
         output["step"] = "assigning_emails"
         logging.info("📧 Assigning recipient email addresses...")
         assignments = {
-            company: "krithikavjk@gmail.com"
+            company: recipient_email
             for company in companies
         }
         output["assignments"] = assignments
-        print("📧 Test Mode: All emails are being sent to krithikavjk@gmail.com")
+        print(f"📧 All emails are being sent to {recipient_email}")
+
 
         output["step"] = "sending_emails"
         logging.info("📨 Sending emails...")
