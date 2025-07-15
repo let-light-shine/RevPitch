@@ -267,7 +267,7 @@ async def run_actual_campaign(sector: str, job_id: str, recipient_email: str):
         if isinstance(companies[0], dict) and "name" in companies[0]:
             companies = [c["name"] for c in companies]
 
-        companies = companies[:2]  # ✅ TEMP: Limit to 2 companies
+        companies = companies[:5]  
         output["companies"] = companies
         print(f"✅ Companies discovered: {companies}")
 
