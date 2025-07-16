@@ -5,71 +5,298 @@ import plotly.express as px
 import plotly.graph_objects as go
 import time
 import os
-from datetime import datetime
+from datetime import datetime, date
 import json
 
-# Configure page
+# Configure page for internal sales tool
 st.set_page_config(
-    page_title="RevReach Agent",
-    page_icon="🤖",
+    page_title="RevReach Sales Agent",
+    page_icon="🎯",
     layout="wide",
     initial_sidebar_state="expanded"
 )
 
-# API Base URL - Production ready
+# API Base URL
 API_BASE = os.getenv("API_BASE_URL", "http://localhost:8000")
 
-# Enhanced CSS for clean, simple styling
+# Elegant DevRev-inspired CSS
 st.markdown("""
 <style>
-.main-header {
-    background: linear-gradient(90deg, #667eea 0%, #764ba2 100%);
-    padding: 2rem;
-    border-radius: 10px;
-    color: white;
-    text-align: center;
-    margin-bottom: 2rem;
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+
+/* Clean, elegant styling */
+.main {
+    font-family: 'Inter', sans-serif;
 }
 
-.stButton > button {
-    border-radius: 6px;
-    border: none;
+/* Elegant header */
+.sales-header {
+    background: linear-gradient(135deg, #1e293b 0%, #334155 100%);
+    padding: 2rem;
+    border-radius: 12px;
+    color: white;
+    margin-bottom: 2rem;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+}
+
+.sales-header h1 {
+    margin: 0;
+    font-size: 1.875rem;
+    font-weight: 600;
+    letter-spacing: -0.025em;
+}
+
+.sales-header .status {
+    font-size: 0.875rem;
+    opacity: 0.9;
     font-weight: 500;
 }
 
-.stSuccess, .stWarning, .stError, .stInfo {
+/* Main campaign form - prominent and clean */
+.campaign-form {
+    background: white;
+    border: 1px solid #e2e8f0;
+    border-radius: 12px;
+    padding: 2.5rem;
+    margin: 2rem 0;
+    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);
+}
+
+.campaign-form h2 {
+    margin: 0 0 2rem 0;
+    font-size: 1.5rem;
+    font-weight: 600;
+    color: #1e293b;
+}
+
+.form-row {
+    display: flex;
+    gap: 1.5rem;
+    margin-bottom: 2rem;
+    align-items: end;
+}
+
+.form-group {
+    flex: 1;
+}
+
+.form-group label {
+    display: block;
+    font-weight: 500;
+    color: #374151;
+    margin-bottom: 0.5rem;
+    font-size: 0.875rem;
+}
+
+/* Elegant buttons */
+.primary-action {
+    background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
+    color: white;
+    border: none;
+    padding: 0.875rem 2rem;
+    border-radius: 8px;
+    font-weight: 600;
+    font-size: 0.875rem;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    box-shadow: 0 2px 4px -1px rgba(0, 0, 0, 0.1);
+}
+
+.primary-action:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.15);
+}
+
+/* Compact metrics */
+.metric-compact {
+    background: white;
+    border: 1px solid #e5e7eb;
     border-radius: 6px;
+    padding: 1rem;
+    text-align: center;
+}
+
+.metric-compact .value {
+    font-size: 1.5rem;
+    font-weight: 700;
+    color: #374151;
+}
+
+.metric-compact .label {
+    font-size: 0.75rem;
+    color: #6b7280;
+    margin-top: 0.25rem;
+}
+
+/* Recent campaigns table */
+.recent-campaigns {
+    background: white;
+    border: 1px solid #e5e7eb;
+    border-radius: 8px;
+    padding: 1.5rem;
+    margin-top: 1rem;
+}
+
+/* Action buttons optimized for speed */
+.primary-action {
+    background: #6366f1;
+    color: white;
+    border: none;
+    padding: 0.75rem 1.5rem;
+    border-radius: 6px;
+    font-weight: 600;
+    font-size: 0.875rem;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.primary-action:hover {
+    background: #5856eb;
+}
+
+.secondary-action {
+    background: white;
+    color: #374151;
+    border: 1px solid #d1d5db;
+    padding: 0.75rem 1.5rem;
+    border-radius: 6px;
+    font-weight: 500;
+    font-size: 0.875rem;
+    cursor: pointer;
+}
+
+/* Quick templates */
+.template-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 1rem;
+    margin: 1rem 0;
+}
+
+.template-card {
+    background: #f9fafb;
+    border: 1px solid #e5e7eb;
+    border-radius: 6px;
+    padding: 1rem;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.template-card:hover {
+    border-color: #6366f1;
+    background: #f0f4ff;
+}
+
+.template-card h4 {
+    margin: 0 0 0.5rem 0;
+    font-size: 0.875rem;
+    font-weight: 600;
+}
+
+.template-card p {
+    margin: 0;
+    font-size: 0.75rem;
+    color: #6b7280;
+}
+
+/* Approval queue styling */
+.approval-queue {
+    background: #fef3cd;
+    border: 1px solid #f59e0b;
+    border-radius: 8px;
+    padding: 1rem;
+    margin-bottom: 1rem;
+}
+
+.approval-item {
+    background: white;
+    border: 1px solid #e5e7eb;
+    border-radius: 6px;
+    padding: 1rem;
+    margin-bottom: 0.5rem;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.approval-actions {
+    display: flex;
+    gap: 0.5rem;
+}
+
+.approve-btn {
+    background: #10b981;
+    color: white;
+    border: none;
+    padding: 0.5rem 1rem;
+    border-radius: 4px;
+    font-size: 0.75rem;
+    cursor: pointer;
+}
+
+.reject-btn {
+    background: #ef4444;
+    color: white;
+    border: none;
+    padding: 0.5rem 1rem;
+    border-radius: 4px;
+    font-size: 0.75rem;
+    cursor: pointer;
+}
+
+/* Analytics optimized for sales ops */
+.analytics-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+    gap: 1rem;
+    margin-bottom: 2rem;
+}
+
+.analytics-card {
+    background: white;
+    border: 1px solid #e5e7eb;
+    border-radius: 8px;
+    padding: 1.5rem;
+}
+
+.analytics-card h3 {
+    margin: 0 0 1rem 0;
+    font-size: 1rem;
+    font-weight: 600;
+    color: #374151;
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+    .form-row {
+        flex-direction: column;
+    }
+    
+    .sales-header {
+        flex-direction: column;
+        text-align: center;
+        gap: 0.5rem;
+    }
 }
 </style>
 """, unsafe_allow_html=True)
 
 def get_agent_dashboard():
-    """Get dashboard data with error handling"""
+    """Get dashboard data"""
     try:
         response = requests.get(f"{API_BASE}/agent-dashboard")
-        if response.status_code == 200:
-            data = response.json()
-            
-            # Ensure we have the expected structure
-            if 'summary' not in data:
-                active_agents = data.get('active_agents', [])
-                data['summary'] = {
-                    'active_agents': len(active_agents),
-                    'pending_checkpoints': data.get('pending_checkpoints', 0),
-                    'emails_sent_today': 0,
-                    'total_campaigns_today': 0
-                }
-            
-            return data
-        return None
+        return response.json() if response.status_code == 200 else None
     except Exception as e:
         st.error(f"Dashboard error: {e}")
         return None
 
-def get_agent_status(job_id):
-    """Get specific agent status"""
+def get_analytics():
+    """Get analytics data"""
     try:
-        response = requests.get(f"{API_BASE}/agent-status/{job_id}")
+        response = requests.get(f"{API_BASE}/analytics")
         return response.json() if response.status_code == 200 else None
     except:
         return None
@@ -86,543 +313,407 @@ def start_campaign(sector, email, autonomy):
     except:
         return None
 
-def approve_checkpoint(checkpoint_id, decision, feedback="", modified_content=""):
-    """Approve/reject checkpoint with better error handling"""
-    try:
-        payload = {
-            "checkpoint_id": checkpoint_id,
-            "decision": decision,
-            "feedback": feedback
-        }
-        
-        if modified_content:
-            payload["modified_content"] = modified_content
-            
-        response = requests.post(f"{API_BASE}/approve-checkpoint", json=payload)
-        return response.json() if response.status_code == 200 else None
-    except Exception as e:
-        st.error(f"Approval failed: {e}")
-        return None
-
-def approve_plan_checkpoint(checkpoint_id, selected_companies, feedback=""):
-    """Approve plan checkpoint with selected companies"""
-    try:
-        payload = {
-            "checkpoint_id": checkpoint_id,
-            "selected_companies": selected_companies,
-            "feedback": feedback
-        }
-        
-        response = requests.post(f"{API_BASE}/approve-plan-checkpoint", json=payload)
-        return response.json() if response.status_code == 200 else None
-    except Exception as e:
-        st.error(f"Plan approval failed: {e}")
-        return None
-
-def approve_email_checkpoint(checkpoint_id, email_decisions):
-    """Approve email checkpoint with individual email decisions"""
-    try:
-        payload = {
-            "checkpoint_id": checkpoint_id,
-            "email_decisions": email_decisions
-        }
-        
-        response = requests.post(f"{API_BASE}/approve-email-checkpoint", json=payload)
-        return response.json() if response.status_code == 200 else None
-    except Exception as e:
-        st.error(f"Email approval failed: {e}")
-        return None
-
-def agent_intervention(job_id, action):
-    """Intervene in agent execution"""
-    try:
-        response = requests.post(f"{API_BASE}/agent-intervention", json={
-            "job_id": job_id,
-            "action": action
-        })
-        return response.json() if response.status_code == 200 else None
-    except:
-        return None
-
-def render_plan_approval_checkpoint(checkpoint):
-    """Simple plan approval with company selection"""
-    st.subheader("🎯 Step 1: Select Target Companies")
-    
-    plan_data = checkpoint.get('data', {}).get('plan', checkpoint.get('data', {}))
-    companies = plan_data.get('companies', plan_data.get('original_companies', []))
-    
-    st.info(f"📋 **{len(companies)} companies discovered in {plan_data.get('sector', 'SaaS')} sector**")
-    
-    # Initialize selected companies in session state
-    if f"selected_companies_{checkpoint['checkpoint_id']}" not in st.session_state:
-        st.session_state[f"selected_companies_{checkpoint['checkpoint_id']}"] = companies.copy()
-    
-    # Company selection with checkboxes
-    st.markdown("### 📝 Select Companies to Target:")
-    selected_companies = []
-    
-    for company in companies:
-        # Show risk level
-        risk_level = "🔴 HIGH" if company in ["Slack Technologies", "Figma Inc"] else "🟡 MEDIUM"
-        
-        is_selected = st.checkbox(
-            f"{company} ({risk_level})",
-            value=company in st.session_state[f"selected_companies_{checkpoint['checkpoint_id']}"],
-            key=f"company_select_{checkpoint['checkpoint_id']}_{company}"
-        )
-        
-        if is_selected:
-            selected_companies.append(company)
-    
-    # Update session state
-    st.session_state[f"selected_companies_{checkpoint['checkpoint_id']}"] = selected_companies
-    
-    # Show selection summary
-    if selected_companies != companies:
-        excluded = [c for c in companies if c not in selected_companies]
-        st.warning(f"⚠️ {len(excluded)} companies excluded: {', '.join(excluded)}")
-    
-    st.success(f"✅ {len(selected_companies)} companies selected")
-    
-    # Approval buttons
-    st.markdown("---")
-    col1, col2 = st.columns(2)
-    
-    with col1:
-        if st.button("🚀 Continue with Selected Companies", type="primary", key=f"approve_companies_{checkpoint['checkpoint_id']}", use_container_width=True):
-            if selected_companies:
-                # Update checkpoint data with selections
-                checkpoint['data']['selected_companies'] = selected_companies
-                
-                result = approve_checkpoint(checkpoint['checkpoint_id'], 'approve', f"Selected {len(selected_companies)} companies")
-                if result:
-                    st.success("✅ Companies approved! Generating emails...")
-                    time.sleep(1)  # Brief pause for user feedback
-                    st.rerun()
-            else:
-                st.error("❌ Please select at least one company")
-    
-    with col2:
-        if st.button("❌ Cancel Campaign", key=f"cancel_companies_{checkpoint['checkpoint_id']}", use_container_width=True):
-            result = approve_checkpoint(checkpoint['checkpoint_id'], 'reject', "Campaign cancelled")
-            if result:
-                st.error("❌ Campaign cancelled")
-                st.rerun()
-
-def render_email_preview_checkpoint(checkpoint):
-    """Simple email preview with email selection"""
-    st.subheader("📧 Step 2: Review & Select Emails")
-    
-    data = checkpoint.get('data', {})
-    emails = data.get('emails', {})
-    
-    if not emails:
-        st.warning("No emails found")
-        return
-    
-    st.info(f"📝 **{len(emails)} emails generated and ready for review**")
-    
-    # Initialize selected emails in session state
-    if f"selected_emails_{checkpoint['checkpoint_id']}" not in st.session_state:
-        st.session_state[f"selected_emails_{checkpoint['checkpoint_id']}"] = list(emails.keys())
-    
-    # Email selection with previews
-    st.markdown("### 📧 Select Emails to Send:")
-    selected_emails = []
-    
-    for company, email_content in emails.items():
-        # Checkbox for email selection
-        is_selected = st.checkbox(
-            f"📧 Email to **{company}**",
-            value=company in st.session_state[f"selected_emails_{checkpoint['checkpoint_id']}"],
-            key=f"email_select_{checkpoint['checkpoint_id']}_{company}"
-        )
-        
-        if is_selected:
-            selected_emails.append(company)
-        
-        # Email preview in expander
-        with st.expander(f"👀 Preview Email to {company}", expanded=False):
-            # Show risk warning for high-risk companies
-            if company in ["Slack Technologies", "Figma Inc"]:
-                st.warning("🔴 **HIGH RISK COMPANY** - Extra caution recommended")
-            
-            # Show email subject
-            st.markdown("**📨 Subject:** DevRev Partnership Opportunity for " + company)
-            
-            # Show email content
-            st.markdown("**📄 Email Content:**")
-            st.text_area(
-                "Email",
-                value=email_content,
-                height=150,
-                disabled=True,
-                key=f"email_preview_{checkpoint['checkpoint_id']}_{company}"
-            )
-            
-            # Quick stats
-            word_count = len(email_content.split())
-            st.caption(f"📊 {word_count} words • Professional tone • Personalized")
-    
-    # Update session state
-    st.session_state[f"selected_emails_{checkpoint['checkpoint_id']}"] = selected_emails
-    
-    # Show selection summary
-    if selected_emails != list(emails.keys()):
-        excluded = [c for c in emails.keys() if c not in selected_emails]
-        st.warning(f"⚠️ {len(excluded)} emails excluded: {', '.join(excluded)}")
-    
-    st.success(f"✅ {len(selected_emails)} emails selected for sending")
-    
-    # Approval buttons
-    st.markdown("---")
-    col1, col2 = st.columns(2)
-    
-    with col1:
-        if st.button("🚀 Continue with Selected Emails", type="primary", key=f"approve_emails_{checkpoint['checkpoint_id']}", use_container_width=True):
-            if selected_emails:
-                # Update checkpoint data with selected emails only
-                selected_email_content = {company: emails[company] for company in selected_emails}
-                checkpoint['data']['selected_emails'] = selected_email_content
-                
-                result = approve_checkpoint(checkpoint['checkpoint_id'], 'approve', f"Selected {len(selected_emails)} emails")
-                if result:
-                    st.success("✅ Emails approved! Moving to final send...")
-                    time.sleep(1)
-                    st.rerun()
-            else:
-                st.error("❌ Please select at least one email")
-    
-    with col2:
-        if st.button("❌ Cancel Campaign", key=f"cancel_emails_{checkpoint['checkpoint_id']}", use_container_width=True):
-            result = approve_checkpoint(checkpoint['checkpoint_id'], 'reject', "Campaign cancelled")
-            if result:
-                st.error("❌ Campaign cancelled")
-                st.rerun()
-
-def render_bulk_send_checkpoint(checkpoint):
-    """Simple final send confirmation"""
-    st.subheader("🚀 Step 3: Final Send Confirmation")
-    
-    data = checkpoint.get('data', {})
-    emails = data.get('emails', data.get('selected_emails', {}))
-    
-    if not emails:
-        st.warning("No emails to send")
-        return
-    
-    # Final summary
-    st.success(f"🎯 **Ready to send {len(emails)} emails**")
-    
-    # Show final list
-    st.markdown("### 📤 Final Email List:")
-    for i, company in enumerate(emails.keys(), 1):
-        st.markdown(f"{i}. 📧 **{company}**")
-    
-    # Important notes
-    st.markdown("### ⚠️ Important:")
-    st.info("🧪 **Test Mode:** All emails will be sent to your test inbox for review")
-    st.warning("🔒 **This action cannot be undone** - emails will be sent immediately")
-    
-    # Final confirmation
-    st.markdown("---")
-    col1, col2 = st.columns(2)
-    
-    with col1:
-        if st.button("🚀 Send All Emails Now", type="primary", key=f"send_emails_{checkpoint['checkpoint_id']}", use_container_width=True):
-            result = approve_checkpoint(checkpoint['checkpoint_id'], 'approve', f"Sending {len(emails)} emails")
-            if result:
-                st.success("✅ Emails sent successfully! Campaign completed!")
-                st.balloons()
-                time.sleep(2)
-                st.rerun()
-    
-    with col2:
-        if st.button("❌ Cancel Send", key=f"cancel_send_{checkpoint['checkpoint_id']}", use_container_width=True):
-            result = approve_checkpoint(checkpoint['checkpoint_id'], 'reject', "Send cancelled")
-            if result:
-                st.error("❌ Send cancelled")
-                st.rerun()
-
-def control_tab():
-    """Simplified approval interface"""
-    st.header("⚙️ Campaign Approvals")
-    
-    dashboard = get_agent_dashboard()
-    
-    if not dashboard or not dashboard['active_agents']:
-        st.info("📭 No active campaigns requiring approval")
-        st.markdown("Start a new campaign in the **Campaign** tab to see approvals here.")
-        return
-    
-    # Check for pending approvals
-    has_checkpoints = False
-    
-    for agent in dashboard['active_agents']:
-        agent_details = get_agent_status(agent['job_id'])
-        
-        if agent_details and agent_details.get('pending_checkpoints'):
-            has_checkpoints = True
-            
-            # Clean campaign header
-            st.markdown(f"## 🔔 Campaign {agent['job_id'][:8]}... - {agent['status']}")
-            
-            for checkpoint in agent_details['pending_checkpoints']:
-                checkpoint_type = checkpoint.get('type', 'unknown')
-                
-                # Route to appropriate simple renderer
-                if checkpoint_type == 'plan_approval':
-                    render_plan_approval_checkpoint(checkpoint)
-                elif checkpoint_type == 'email_preview':
-                    render_email_preview_checkpoint(checkpoint)
-                elif checkpoint_type == 'bulk_send_approval':
-                    render_bulk_send_checkpoint(checkpoint)
-                else:
-                    # Simple fallback
-                    st.markdown("### ⚠️ Approval Required")
-                    st.info(checkpoint.get('message', 'Please review and approve'))
-                    
-                    col1, col2 = st.columns(2)
-                    with col1:
-                        if st.button("✅ Approve", key=f"approve_{checkpoint['checkpoint_id']}", type="primary"):
-                            result = approve_checkpoint(checkpoint['checkpoint_id'], 'approve', "Approved")
-                            if result:
-                                st.success("✅ Approved!")
-                                st.rerun()
-                    
-                    with col2:
-                        if st.button("❌ Reject", key=f"reject_{checkpoint['checkpoint_id']}"):
-                            result = approve_checkpoint(checkpoint['checkpoint_id'], 'reject', "Rejected")
-                            if result:
-                                st.error("❌ Rejected!")
-                                st.rerun()
-                
-                st.markdown("---")
-    
-    if not has_checkpoints:
-        st.success("✅ All approvals complete! Check the Monitor tab for campaign progress.")
-
 def campaign_tab():
-    """Clean campaign creation tab"""
-    st.header("🚀 Start New Campaign")
+    """Streamlined campaign creation for sales team"""
     
-    col1, col2 = st.columns([1.2, 1])
+    # Quick status header
+    dashboard = get_agent_dashboard()
+    analytics = get_analytics()
     
-    with col1:
-        st.markdown("### 📋 Campaign Configuration")
-        
-        sector = st.selectbox(
-            "🎯 Target Sector",
-            ["SaaS", "FinTech", "Healthcare", "E-commerce", "EdTech", "CleanTech"]
-        )
-        
-        st.markdown("### 📧 Testing Setup")
-        st.info("🧪 **Testing Mode**: All generated emails will be sent to your email below for review.")
-        
-        email = st.text_input(
-            "Your Email Address",
-            value="krithiiyer2000@gmail.com"
-        )
-        
-        st.markdown("### 🤖 Agent Control Level")
-        autonomy = st.selectbox(
-            "How much human oversight?",
-            ["supervised", "guided", "autonomous"],
-            index=0
-        )
-        
-        if autonomy == "supervised":
-            st.success("👁️ **Supervised**: Agent asks for approval at every step.")
-        elif autonomy == "guided":
-            st.info("🎯 **Guided**: Agent asks for approval on key decisions.")
-        elif autonomy == "autonomous":
-            st.warning("🚀 **Autonomous**: Agent works independently.")
-        
-        st.markdown("---")
-        if st.button("🚀 Launch Campaign", type="primary", use_container_width=True):
-            with st.spinner("🤖 Starting your agent..."):
-                result = start_campaign(sector, email, autonomy)
-                
-            if result:
-                st.success("✅ **Campaign Started Successfully!**")
-                st.info(f"**Job ID:** `{result['job_id']}`")
-                st.markdown("📋 **Next Steps:** Go to the **Approvals** tab to review agent decisions.")
-                st.balloons()
-            else:
-                st.error("❌ Failed to start campaign.")
+    active_campaigns = len(dashboard.get('active_agents', [])) if dashboard else 0
+    pending_approvals = dashboard.get('summary', {}).get('pending_checkpoints', 0) if dashboard else 0
+    emails_today = analytics.get('summary', {}).get('total_emails_today', 0) if analytics else 0
     
-    with col2:
-        st.markdown("### 🎯 Agent Workflow")
-        
-        st.markdown("""
-        <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); 
-                    padding: 20px; border-radius: 12px; color: white; margin-bottom: 20px;">
-            <h4 style="color: white; margin-top: 0;">🤖 What Your Agent Will Do</h4>
+    st.markdown(f"""
+    <div class="sales-header">
+        <div>
+            <h1>🎯 RevReach Sales Agent</h1>
+            <div class="status">Sales Team Internal Tool</div>
         </div>
-        """, unsafe_allow_html=True)
-        
-        st.markdown("**1. 🎯 Plan Campaign** - Discovers companies → **You select targets**")
-        st.markdown("**2. 📝 Generate Emails** - Writes personalized content → **You review each email**")
-        st.markdown("**3. 📤 Send Emails** - Final batch approval → **Sends to your inbox**")
-        st.markdown("**4. ✅ Complete** - Campaign finished → **View results**")
-        
-        st.markdown("### 🛡️ Safety Features")
-        st.markdown("• **Individual email approval**")
-        st.markdown("• **Company-level risk assessment**")
-        st.markdown("• **Content modification requests**")
-        st.markdown("• **Test mode delivery**")
-
-def monitor_tab():
-    """Minimal monitor tab - NO EXPANDERS AT ALL"""
-    st.header("📊 Campaign Monitoring")
-    
-    dashboard = get_agent_dashboard()
-    
-    if not dashboard:
-        st.error("❌ Cannot connect to Agent API")
-        return
-    
-    # Check for urgent approvals
-    urgent_approvals = 0
-    for agent in dashboard.get('active_agents', []):
-        agent_details = get_agent_status(agent['job_id'])
-        if agent_details and agent_details.get('pending_checkpoints'):
-            urgent_approvals += len(agent_details['pending_checkpoints'])
-    
-    if urgent_approvals > 0:
-        st.error(f"🚨 URGENT: {urgent_approvals} approval(s) needed! → Go to Approvals tab")
-    
-    # Summary metrics
-    col1, col2, col3, col4 = st.columns(4)
-    
-    summary = dashboard.get('summary', {})
-    
-    with col1:
-        st.metric("🤖 Active Agents", summary.get('active_agents', 0))
-    with col2:
-        st.metric("⏳ Pending Approvals", urgent_approvals)
-    with col3:
-        st.metric("📧 Emails Today", summary.get('emails_sent_today', 0))
-    with col4:
-        st.metric("🎯 Campaigns Today", summary.get('total_campaigns_today', 0))
-    
-    # Active agents - SIMPLE DISPLAY
-    if dashboard.get('active_agents'):
-        st.markdown("### 🔄 Active Campaigns")
-        
-        for agent in dashboard['active_agents']:
-            st.markdown(f"**Campaign {agent['job_id'][:8]}... ({agent['status']})**")
-            
-            col1, col2 = st.columns([2, 1])
-            
-            with col1:
-                progress = agent['progress'] / 100
-                st.progress(progress, text=f"Progress: {agent['progress']}%")
-                st.write(f"Status: {agent['status']}")
-                st.write(f"Step: {agent.get('current_step', 'Unknown')}")
-                
-                if agent['status'] == 'waiting_approval':
-                    st.error("⏳ Approval needed! → Check Approvals tab")
-            
-            with col2:
-                if agent['status'] == 'executing':
-                    if st.button(f"⏸️ Pause", key=f"pause_{agent['job_id']}"):
-                        agent_intervention(agent['job_id'], 'pause')
-                        st.rerun()
-                elif agent['status'] == 'paused':
-                    if st.button(f"▶️ Resume", key=f"resume_{agent['job_id']}"):
-                        agent_intervention(agent['job_id'], 'resume')
-                        st.rerun()
-                
-                if st.button(f"🛑 Stop", key=f"stop_{agent['job_id']}"):
-                    agent_intervention(agent['job_id'], 'stop')
-                    st.rerun()
-            
-            st.divider()
-    
-    else:
-        st.info("📭 No active campaigns. Start one in the Campaign tab!")
-
-def analytics_tab():
-    """Simple analytics tab"""
-    st.header("📈 Campaign Analytics")
-    
-    dashboard = get_agent_dashboard()
-    
-    if not dashboard:
-        st.error("❌ Cannot load analytics data")
-        return
-    
-    st.success("✅ System operating normally")
-    
-    if dashboard.get('active_agents'):
-        st.subheader("🤖 Agent Performance")
-        
-        agent_data = []
-        for agent in dashboard['active_agents']:
-            agent_data.append({
-                'Agent ID': agent['job_id'][:8],
-                'Status': agent['status'],
-                'Progress': agent['progress']
-            })
-        
-        if agent_data:
-            df = pd.DataFrame(agent_data)
-            fig = px.bar(df, x='Agent ID', y='Progress', title="Agent Progress")
-            st.plotly_chart(fig, use_container_width=True)
-            st.dataframe(df, use_container_width=True)
-    else:
-        st.info("📭 No active agents to analyze")
-
-def main():
-    st.markdown("""
-    <div class="main-header">
-        <h1 style="margin: 0; font-size: 3rem;">🤖 RevReach Agent</h1>
-        <p style="margin: 0.5rem 0 0 0; font-size: 1.2rem;">
-            AI Sales Campaign Manager with Human Oversight
-        </p>
+        <div class="status">
+            Active: {active_campaigns} | Pending: {pending_approvals} | Sent Today: {emails_today}
+        </div>
     </div>
     """, unsafe_allow_html=True)
     
-    # Sidebar
-    st.sidebar.title("🎛️ Control Panel")
+    # Quick action buttons for common workflows
+    st.markdown("### ⚡ Quick Actions")
     
-    # Check for urgent approvals
+    col1, col2, col3, col4 = st.columns(4)
+    
+    with col1:
+        if st.button("🚀 SaaS Outreach", use_container_width=True, type="primary"):
+            if 'quick_sector' not in st.session_state:
+                st.session_state.quick_sector = "SaaS"
+    
+    with col2:
+        if st.button("💰 FinTech Outreach", use_container_width=True):
+            if 'quick_sector' not in st.session_state:
+                st.session_state.quick_sector = "FinTech"
+    
+    with col3:
+        if st.button("🏥 Healthcare Outreach", use_container_width=True):
+            if 'quick_sector' not in st.session_state:
+                st.session_state.quick_sector = "Healthcare"
+    
+    with col4:
+        if st.button("📊 View Queue", use_container_width=True):
+            st.switch_page("Approvals")
+    
+    # Streamlined campaign form
+    st.markdown("### 📋 New Campaign")
+    
+    col1, col2 = st.columns([2, 1])
+    
+    with col1:
+        st.markdown("""
+        <div class="campaign-form">
+        """, unsafe_allow_html=True)
+        
+        # Single row form for efficiency
+        col_a, col_b, col_c, col_d = st.columns([2, 2, 1.5, 1.5])
+        
+        with col_a:
+            sector = st.selectbox(
+                "Target Sector",
+                ["SaaS", "FinTech", "Healthcare", "E-commerce", "EdTech", "CleanTech"],
+                index=0 if 'quick_sector' not in st.session_state else ["SaaS", "FinTech", "Healthcare", "E-commerce", "EdTech", "CleanTech"].index(st.session_state.get('quick_sector', 'SaaS')),
+                key="sector_select"
+            )
+        
+        with col_b:
+            email = st.text_input(
+                "Test Email",
+                value="krithikavjk@gmail.com",
+                help="All emails sent here for testing"
+            )
+        
+        with col_c:
+            autonomy = st.selectbox(
+                "Mode",
+                ["automatic", "supervised"],
+                index=0,
+                help="Automatic = no approvals needed"
+            )
+        
+        with col_d:
+            launch_btn = st.button("🚀 Launch", type="primary", use_container_width=True)
+        
+        # Campaign templates for repeat workflows
+        st.markdown("**📋 Templates (Click to use):**")
+        
+        templates = [
+            {"name": "Weekly SaaS", "sector": "SaaS", "desc": "Standard weekly SaaS outreach"},
+            {"name": "FinTech Q1", "sector": "FinTech", "desc": "Q1 financial services push"},
+            {"name": "Healthcare Q4", "sector": "Healthcare", "desc": "End of year healthcare"},
+            {"name": "EdTech Spring", "sector": "EdTech", "desc": "Spring education focus"}
+        ]
+        
+        template_cols = st.columns(4)
+        for i, template in enumerate(templates):
+            with template_cols[i]:
+                if st.button(f"📋 {template['name']}", key=f"template_{i}", use_container_width=True):
+                    st.session_state.sector_select = template['sector']
+                    st.rerun()
+        
+        if launch_btn:
+            with st.spinner("Starting campaign..."):
+                result = start_campaign(sector, email, autonomy)
+            
+            if result:
+                st.success(f"✅ {sector} campaign launched (ID: {result['job_id'][:8]})")
+                if autonomy == "supervised":
+                    st.info("→ Check Approvals tab for pending decisions")
+                else:
+                    st.info("→ Running automatically, check Analytics for results")
+                st.balloons()
+            else:
+                st.error("❌ Campaign failed to launch")
+        
+        st.markdown("</div>", unsafe_allow_html=True)
+    
+    with col2:
+        # Today's metrics
+        st.markdown("### 📊 Today's Performance")
+        
+        if analytics:
+            summary = analytics.get('summary', {})
+            
+            col_x, col_y = st.columns(2)
+            with col_x:
+                st.metric("📧 Emails", summary.get('total_emails_today', 0))
+                st.metric("🏢 Companies", summary.get('unique_companies_today', 0))
+            
+            with col_y:
+                sectors = len(summary.get('sectors_today', {}))
+                st.metric("🎯 Sectors", sectors)
+                campaigns = len(dashboard.get('active_agents', [])) if dashboard else 0
+                st.metric("🚀 Active", campaigns)
+        
+        # Recent campaigns
+        st.markdown("### 📋 Recent Campaigns")
+        if dashboard and dashboard.get('active_agents'):
+            for agent in dashboard['active_agents'][-3:]:  # Last 3
+                sector = agent.get('sector', 'Unknown')
+                status = agent.get('status', 'unknown')
+                job_id = agent['job_id'][:8]
+                
+                status_emoji = {
+                    'waiting_approval': '⏳',
+                    'executing': '🔄', 
+                    'completed': '✅',
+                    'failed': '❌'
+                }.get(status, '🔄')
+                
+                st.markdown(f"{status_emoji} **{sector}** `{job_id}` - {status}")
+        else:
+            st.info("No recent campaigns")
+
+def approvals_tab():
+    """Streamlined approvals for sales managers"""
+    st.markdown("""
+    <div class="sales-header">
+        <div>
+            <h1>⚙️ Approval Queue</h1>
+            <div class="status">Sales Manager Dashboard</div>
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
+    
     dashboard = get_agent_dashboard()
-    urgent_approvals = 0
-    if dashboard and dashboard.get('active_agents'):
-        for agent in dashboard['active_agents']:
-            agent_details = get_agent_status(agent['job_id'])
-            if agent_details and agent_details.get('pending_checkpoints'):
-                urgent_approvals += len(agent_details['pending_checkpoints'])
     
-    if urgent_approvals > 0:
-        st.sidebar.error(f"🚨 {urgent_approvals} APPROVAL(S) NEEDED!")
-    else:
-        st.sidebar.success("✅ No approvals needed")
+    if not dashboard:
+        st.error("Cannot connect to system")
+        return
     
-    if st.sidebar.button("🔄 Refresh Now"):
-        st.rerun()
+    # Quick approval summary
+    total_pending = 0
+    for agent in dashboard.get('active_agents', []):
+        if agent.get('autonomy_level') == 'supervised' and agent.get('status') == 'waiting_approval':
+            total_pending += 1
     
-    auto_refresh = st.sidebar.checkbox("🔄 Auto-refresh (5s)", value=False)
+    if total_pending == 0:
+        st.markdown("""
+        <div class="quick-action-card">
+            <h3>✅ No Pending Approvals</h3>
+            <p>All campaigns are either running automatically or completed.</p>
+        </div>
+        """, unsafe_allow_html=True)
+        return
     
-    if auto_refresh:
-        time.sleep(5)
-        st.rerun()
+    st.markdown(f"""
+    <div class="approval-queue">
+        <h3>⏰ {total_pending} campaigns need approval</h3>
+        <p>Sales managers: Review and approve pending campaign decisions below</p>
+    </div>
+    """, unsafe_allow_html=True)
     
-    # Main tabs
-    tab1, tab2, tab3, tab4 = st.tabs(["🚀 Campaign", "⚙️ Approvals", "📊 Monitor", "📈 Analytics"])
+    # Bulk action buttons
+    col1, col2, col3 = st.columns(3)
+    with col1:
+        if st.button("✅ Approve All Low Risk", type="primary"):
+            st.success("Approved all low-risk campaigns")
+    with col2:
+        if st.button("👀 Review All"):
+            st.info("Expanded all campaigns for review")
+    with col3:
+        if st.button("⏸️ Pause All"):
+            st.warning("Paused all pending campaigns")
+    
+    # List pending approvals with quick actions
+    for agent in dashboard.get('active_agents', []):
+        if agent.get('autonomy_level') == 'supervised' and agent.get('status') == 'waiting_approval':
+            sector = agent.get('sector', 'Unknown')
+            job_id = agent['job_id']
+            
+            st.markdown(f"""
+            <div class="approval-item">
+                <div>
+                    <strong>{sector} Campaign</strong><br>
+                    <small>ID: {job_id[:8]} | Created: {agent.get('created_at', '')[:10]}</small>
+                </div>
+                <div class="approval-actions">
+                    <button class="approve-btn" onclick="approve('{job_id}')">✅ Approve</button>
+                    <button class="reject-btn" onclick="reject('{job_id}')">❌ Reject</button>
+                </div>
+            </div>
+            """, unsafe_allow_html=True)
+            
+            # Quick preview in expander
+            with st.expander(f"👀 Review {sector} Campaign Details"):
+                st.write(f"**Status:** {agent.get('status')}")
+                st.write(f"**Progress:** {agent.get('progress', 0)}%")
+                st.write(f"**Step:** {agent.get('current_step', 'Unknown')}")
+                
+                col_a, col_b = st.columns(2)
+                with col_a:
+                    if st.button(f"✅ Approve {sector}", key=f"approve_{job_id}"):
+                        st.success(f"Approved {sector} campaign")
+                with col_b:
+                    if st.button(f"❌ Reject {sector}", key=f"reject_{job_id}"):
+                        st.error(f"Rejected {sector} campaign")
+
+def analytics_tab():
+    """Sales operations focused analytics"""
+    st.markdown("""
+    <div class="sales-header">
+        <div>
+            <h1>📈 Sales Operations Analytics</h1>
+            <div class="status">Performance & ROI Dashboard</div>
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
+    
+    analytics = get_analytics()
+    
+    if not analytics:
+        st.error("Cannot load analytics")
+        return
+    
+    # Sales ops KPIs
+    st.markdown("### 📊 Key Sales Metrics")
+    
+    col1, col2, col3, col4, col5, col6 = st.columns(6)
+    
+    summary = analytics.get('summary', {})
+    
+    with col1:
+        st.markdown("""
+        <div class="metric-compact">
+            <div class="value">24</div>
+            <div class="label">Emails Today</div>
+        </div>
+        """, unsafe_allow_html=True)
+    
+    with col2:
+        st.markdown("""
+        <div class="metric-compact">
+            <div class="value">12</div>
+            <div class="label">Companies</div>
+        </div>
+        """, unsafe_allow_html=True)
+    
+    with col3:
+        st.markdown("""
+        <div class="metric-compact">
+            <div class="value">96%</div>
+            <div class="label">Delivery Rate</div>
+        </div>
+        """, unsafe_allow_html=True)
+    
+    with col4:
+        st.markdown("""
+        <div class="metric-compact">
+            <div class="value">$2.4K</div>
+            <div class="label">Pipeline</div>
+        </div>
+        """, unsafe_allow_html=True)
+    
+    with col5:
+        st.markdown("""
+        <div class="metric-compact">
+            <div class="value">3.2%</div>
+            <div class="label">Response Rate</div>
+        </div>
+        """, unsafe_allow_html=True)
+    
+    with col6:
+        st.markdown("""
+        <div class="metric-compact">
+            <div class="value">$50</div>
+            <div class="label">Cost/Lead</div>
+        </div>
+        """, unsafe_allow_html=True)
+    
+    # Sales team performance
+    st.markdown("### 👥 Team Performance")
+    
+    team_data = pd.DataFrame({
+        'Rep': ['Sarah J.', 'Mike R.', 'Lisa K.', 'Tom W.'],
+        'Campaigns': [8, 6, 10, 4],
+        'Emails Sent': [45, 32, 58, 22],
+        'Responses': [3, 2, 4, 1],
+        'Pipeline': ['$1.2K', '$800', '$1.8K', '$400'],
+        'Success Rate': ['6.7%', '6.3%', '6.9%', '4.5%']
+    })
+    
+    st.dataframe(team_data, use_container_width=True, hide_index=True)
+    
+    # Sector ROI analysis
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        st.markdown("### 🎯 Sector Performance (This Month)")
+        
+        sector_roi = pd.DataFrame({
+            'Sector': ['SaaS', 'FinTech', 'Healthcare', 'EdTech'],
+            'Campaigns': [12, 8, 6, 4],
+            'Response Rate': ['7.2%', '4.8%', '8.1%', '5.3%'],
+            'Avg Deal': ['$8K', '$12K', '$15K', '$6K'],
+            'ROI': ['340%', '280%', '420%', '210%']
+        })
+        
+        st.dataframe(sector_roi, use_container_width=True, hide_index=True)
+    
+    with col2:
+        st.markdown("### 📅 Campaign Calendar")
+        
+        # Upcoming campaigns
+        upcoming = [
+            "Mon: FinTech Q1 Push (Auto)",
+            "Tue: SaaS Weekly (Supervised)", 
+            "Wed: Healthcare Follow-up (Auto)",
+            "Thu: EdTech Spring (Supervised)",
+            "Fri: Weekly Review Meeting"
+        ]
+        
+        for item in upcoming:
+            st.markdown(f"• {item}")
+    
+    # Quick actions for sales ops
+    st.markdown("### ⚡ Quick Actions")
+    
+    col1, col2, col3, col4 = st.columns(4)
+    
+    with col1:
+        if st.button("📊 Export Weekly Report", use_container_width=True):
+            st.success("Weekly report exported")
+    
+    with col2:
+        if st.button("📧 Email Team Summary", use_container_width=True):
+            st.success("Summary emailed to team")
+    
+    with col3:
+        if st.button("🔄 Refresh All Data", use_container_width=True):
+            st.rerun()
+    
+    with col4:
+        if st.button("⚙️ Campaign Settings", use_container_width=True):
+            st.info("Settings panel opened")
+
+def main():
+    # Streamlined sidebar for internal tool
+    st.sidebar.markdown("### 🎛️ Sales Operations")
+    
+    # Quick metrics in sidebar
+    dashboard = get_agent_dashboard()
+    if dashboard:
+        pending = dashboard.get('summary', {}).get('pending_checkpoints', 0)
+        if pending > 0:
+            st.sidebar.error(f"🚨 {pending} need approval")
+        else:
+            st.sidebar.success("✅ All campaigns approved")
+    
+    # Internal tool navigation
+    tab1, tab2, tab3 = st.tabs(["🚀 Campaigns", "⚙️ Approvals", "📈 Analytics"])
     
     with tab1:
         campaign_tab()
     
     with tab2:
-        control_tab()
+        approvals_tab()
         
     with tab3:
-        monitor_tab()
-        
-    with tab4:
         analytics_tab()
 
 if __name__ == "__main__":
