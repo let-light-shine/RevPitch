@@ -173,7 +173,7 @@ async def get_company_context_from_openai_fallback(company: str) -> str:
 
 @timeout_protection(20)
 async def multi_index_retriever_with_timeout(company: str, external_ctx: str, indices: List[str]) -> str:
-    """RAG retrieval with timeout protection"""
+    """RAG retrieval with timeout protection and length limits"""
     try:
         docs = []
         for index in indices[:1]:  # Limit to just 1 index for speed
@@ -185,7 +185,7 @@ async def multi_index_retriever_with_timeout(company: str, external_ctx: str, in
                     es_user=os.getenv("ES_USERNAME"),
                     es_password=os.getenv("ES_PASSWORD"),
                 )
-                retriever = store.as_retriever(search_kwargs={"k": 2})  # Limit results
+                retriever = store.as_retriever(search_kwargs={"k": 1})  # Reduced from 2 to 1
                 docs += retriever.get_relevant_documents(f"{company} DevRev solution")
                 break  # Exit after first successful index
             except Exception as e:
@@ -193,7 +193,11 @@ async def multi_index_retriever_with_timeout(company: str, external_ctx: str, in
                 continue
         
         if docs:
-            return "\n\n".join([d.page_content for d in docs[:2]])  # Limit to 2 docs
+            content = "\n\n".join([d.page_content for d in docs[:1]])  # Limit to 1 doc
+            # Trim if too long
+            if len(content) > 500:
+                content = content[:500] + "..."
+            return content
         else:
             return "DevRev helps companies connect customer feedback to engineering teams for faster product iterations."
             
@@ -203,32 +207,39 @@ async def multi_index_retriever_with_timeout(company: str, external_ctx: str, in
 
 @timeout_protection(15)
 async def retry_llm_invoke_with_timeout(prompt: str) -> str:
-    """LLM invoke with timeout and single retry"""
+    """Fixed LLM invoke with increased timeout and faster model"""
     try:
+        # Try GPT-3.5-turbo first (much faster than GPT-4)
         llm = ChatOpenAI(
-            model="gpt-4", 
+            model="gpt-3.5-turbo",  # Changed from gpt-4 to gpt-3.5-turbo
             temperature=0.2, 
             openai_api_key=os.getenv("OPENAI_API_KEY"),
-            request_timeout=10
+            request_timeout=20,  # Increased from 10 to 20 seconds
+            max_retries=2  # Add retries
         )
         
         response = await llm.ainvoke(prompt)
         return response.content
         
     except Exception as e:
-        print(f"❌ LLM invoke failed: {e}")
-        # Return fallback email
-        return """Dear Team,
-
-I hope this email finds you well. I'm reaching out from DevRev to discuss how we can help enhance your customer engagement and product development processes.
-
-DevRev offers an integrated platform that connects customer feedback directly to engineering teams, enabling faster product iterations and better customer satisfaction.
-
-Would you be open to a brief conversation about how DevRev can support your growth objectives?
-
-Best regards,
-John Doe
-DevRev Sales Team"""
+        print(f"❌ GPT-3.5-turbo failed: {e}")
+        
+        # Fallback to GPT-4 with longer timeout
+        try:
+            llm_gpt4 = ChatOpenAI(
+                model="gpt-4", 
+                temperature=0.2, 
+                openai_api_key=os.getenv("OPENAI_API_KEY"),
+                request_timeout=30,  # Even longer timeout for GPT-4
+                max_retries=1
+            )
+            
+            response = await llm_gpt4.ainvoke(prompt)
+            return response.content
+            
+        except Exception as e2:
+            print(f"❌ GPT-4 also failed: {e2}")
+            raise e2
 
 async def get_company_context_from_perplexity_async(company: str) -> str:
     """Try Perplexity first, fallback to OpenAI if it fails"""
