@@ -485,12 +485,24 @@ def render_step_2_email_review(checkpoint):
         st.error("❌ No emails found for review")
         return
     
-    st.success(f"📝 **{len(emails)} personalized emails generated and ready for review**")
+    # Filter out None email content
+    valid_emails = {company: content for company, content in emails.items() if content is not None}
+    
+    if not valid_emails:
+        st.error("❌ No valid emails found for review")
+        st.warning("All email generation attempts failed. Please try restarting the campaign.")
+        return
+    
+    if len(valid_emails) < len(emails):
+        failed_count = len(emails) - len(valid_emails)
+        st.warning(f"⚠️ {failed_count} emails failed to generate and were excluded")
+    
+    st.success(f"📝 **{len(valid_emails)} personalized emails generated and ready for review**")
     
     # Initialize selected emails in session state (all selected by default)
     session_key = f"selected_emails_{checkpoint['checkpoint_id']}"
     if session_key not in st.session_state:
-        st.session_state[session_key] = list(emails.keys())
+        st.session_state[session_key] = list(valid_emails.keys())
     
     # Email selection with previews
     st.markdown("### 📧 Review & Select Emails:")
@@ -498,7 +510,12 @@ def render_step_2_email_review(checkpoint):
     
     selected_emails = []
     
-    for company, email_content in emails.items():
+    for company, email_content in valid_emails.items():
+        # Additional safety check
+        if not email_content:
+            st.warning(f"⚠️ Email content for {company} is empty, skipping...")
+            continue
+            
         # Get company priority info from backend data
         priority_info = get_company_priority_info(company, companies_with_risk)
         
@@ -537,14 +554,20 @@ def render_step_2_email_review(checkpoint):
                     
                     # Email preview in expander
                     with st.expander(f"👀 Preview Email Content for {company}", expanded=False):
-                        # Extract subject and body
-                        lines = email_content.split('\n')
-                        if lines[0].startswith('Subject:'):
-                            subject = lines[0].replace('Subject:', '').strip()
-                            body = '\n'.join(lines[1:]).strip()
-                        else:
+                        # Extract subject and body with proper null checking
+                        try:
+                            lines = email_content.split('\n')
+                            if lines and lines[0].startswith('Subject:'):
+                                subject = lines[0].replace('Subject:', '').strip()
+                                body = '\n'.join(lines[1:]).strip()
+                            else:
+                                subject = f"DevRev Partnership Opportunity for {company}"
+                                body = email_content.strip()
+                        except Exception as e:
+                            # Fallback if email content is malformed
                             subject = f"DevRev Partnership Opportunity for {company}"
-                            body = email_content
+                            body = str(email_content) if email_content else "Email content unavailable"
+                            st.warning(f"⚠️ Email content formatting issue: {e}")
                         
                         # Show email details
                         st.markdown(f"**📨 Subject:** `{subject}`")
@@ -560,8 +583,8 @@ def render_step_2_email_review(checkpoint):
                         )
                         
                         # Email quality metrics
-                        word_count = len(body.split())
-                        char_count = len(body)
+                        word_count = len(body.split()) if body else 0
+                        char_count = len(body) if body else 0
                         
                         col_a, col_b, col_c = st.columns(3)
                         with col_a:
@@ -595,8 +618,8 @@ def render_step_2_email_review(checkpoint):
     # Show selection summary
     st.markdown("---")
     
-    if len(selected_emails) != len(emails):
-        excluded_count = len(emails) - len(selected_emails)
+    if len(selected_emails) != len(valid_emails):
+        excluded_count = len(valid_emails) - len(selected_emails)
         st.warning(f"⚠️ **{excluded_count} emails excluded** from sending")
     
     # Email metrics
@@ -604,9 +627,15 @@ def render_step_2_email_review(checkpoint):
     with col1:
         st.metric("Emails to Send", len(selected_emails))
     with col2:
-        st.metric("Excluded", len(emails) - len(selected_emails))
+        st.metric("Excluded", len(valid_emails) - len(selected_emails))
     with col3:
-        avg_words = sum(len(emails[c].split()) for c in selected_emails) // max(len(selected_emails), 1)
+        # Calculate average words safely
+        total_words = 0
+        for company in selected_emails:
+            email_content = valid_emails.get(company, "")
+            if email_content:
+                total_words += len(email_content.split())
+        avg_words = total_words // max(len(selected_emails), 1)
         st.metric("Avg Word Count", avg_words)
     
     # Action buttons
@@ -658,8 +687,20 @@ def render_step_3_final_confirmation(checkpoint):
         st.error("❌ No emails to send")
         return
     
+    # Filter out None email content
+    valid_emails = {company: content for company, content in emails.items() if content is not None}
+    
+    if not valid_emails:
+        st.error("❌ No valid emails found to send")
+        st.warning("All email generation attempts failed. Please try restarting the campaign.")
+        return
+    
+    if len(valid_emails) < len(emails):
+        failed_count = len(emails) - len(valid_emails)
+        st.warning(f"⚠️ {failed_count} emails failed to generate and were excluded")
+    
     # Final summary header
-    st.success(f"🎯 **Ready to send {len(emails)} emails for {sector} campaign**")
+    st.success(f"🎯 **Ready to send {len(valid_emails)} emails for {sector} campaign**")
     
     # Test mode notice
     st.markdown("""
@@ -680,15 +721,28 @@ def render_step_3_final_confirmation(checkpoint):
     # Final email list with enhanced display
     st.markdown("### 📤 Final Email Summary:")
     
-    for i, (company, email_content) in enumerate(emails.items(), 1):
+    for i, (company, email_content) in enumerate(valid_emails.items(), 1):
+        # Additional safety check
+        if not email_content:
+            st.warning(f"⚠️ Email content for {company} is empty, skipping...")
+            continue
+            
         priority_info = get_company_priority_info(company, companies_with_risk)
-        word_count = len(email_content.split())
         
-        # Extract subject for display
-        lines = email_content.split('\n')
-        if lines[0].startswith('Subject:'):
-            subject = lines[0].replace('Subject:', '').strip()
-        else:
+        # Calculate word count safely
+        try:
+            word_count = len(email_content.split()) if email_content else 0
+        except:
+            word_count = 0
+        
+        # Extract subject for display with proper null checking
+        try:
+            lines = email_content.split('\n')
+            if lines and lines[0].startswith('Subject:'):
+                subject = lines[0].replace('Subject:', '').strip()
+            else:
+                subject = f"DevRev Partnership Opportunity for {company}"
+        except:
             subject = f"DevRev Partnership Opportunity for {company}"
         
         st.markdown(f"""
@@ -715,12 +769,19 @@ def render_step_3_final_confirmation(checkpoint):
     col1, col2, col3, col4 = st.columns(4)
     
     with col1:
-        st.metric("Total Emails", len(emails))
+        st.metric("Total Emails", len(valid_emails))
     with col2:
-        high_priority = sum(1 for company in emails.keys() if get_company_priority_info(company, companies_with_risk)['level'].startswith("🔴"))
+        high_priority = sum(1 for company in valid_emails.keys() if get_company_priority_info(company, companies_with_risk)['level'].startswith("🔴"))
         st.metric("High Priority", high_priority)
     with col3:
-        total_words = sum(len(content.split()) for content in emails.values())
+        # Calculate total words safely
+        total_words = 0
+        for content in valid_emails.values():
+            if content:
+                try:
+                    total_words += len(content.split())
+                except:
+                    pass
         st.metric("Total Words", total_words)
     with col4:
         st.metric("Test Recipient", "1")
@@ -740,7 +801,7 @@ def render_step_3_final_confirmation(checkpoint):
         # Large prominent send button
         if st.button("🚀 SEND ALL EMAILS NOW", type="primary", key=f"send_emails_{checkpoint['checkpoint_id']}", use_container_width=True):
             with st.spinner("Sending emails... This may take a moment."):
-                result = approve_checkpoint(checkpoint['checkpoint_id'], 'approve', f"Confirmed: Sending {len(emails)} emails to test inbox")
+                result = approve_checkpoint(checkpoint['checkpoint_id'], 'approve', f"Confirmed: Sending {len(valid_emails)} emails to test inbox")
                 
             if result:
                 st.success("✅ Emails sent successfully! Campaign completed!")
@@ -769,6 +830,332 @@ def render_step_3_final_confirmation(checkpoint):
                 st.rerun()
             else:
                 st.error("❌ Failed to cancel send. Please try again.")
+
+
+def render_email_preview_checkpoint(checkpoint):
+    """Step 2: Review & Select Emails (Alternative Implementation)"""
+    st.subheader("📧 Step 2: Review & Select Emails")
+    
+    data = checkpoint.get('data', {})
+    emails = data.get('emails', {})
+    
+    if not emails:
+        st.warning("No emails found")
+        return
+    
+    # Filter out None email content
+    valid_emails = {company: content for company, content in emails.items() if content is not None}
+    
+    if not valid_emails:
+        st.error("❌ No valid emails found for review")
+        st.warning("All email generation attempts failed. Please try restarting the campaign.")
+        return
+    
+    if len(valid_emails) < len(emails):
+        failed_count = len(emails) - len(valid_emails)
+        st.warning(f"⚠️ {failed_count} emails failed to generate and were excluded")
+    
+    st.info(f"📝 **{len(valid_emails)} emails generated and ready for review**")
+    
+    # Initialize selected emails in session state
+    if f"selected_emails_{checkpoint['checkpoint_id']}" not in st.session_state:
+        st.session_state[f"selected_emails_{checkpoint['checkpoint_id']}"] = list(valid_emails.keys())
+    
+    # Email selection with previews
+    st.markdown("### 📧 Select Emails to Send:")
+    selected_emails = []
+    
+    for company, email_content in valid_emails.items():
+        # Additional safety check
+        if not email_content:
+            st.warning(f"⚠️ Email content for {company} is empty, skipping...")
+            continue
+            
+        # Checkbox for email selection
+        is_selected = st.checkbox(
+            f"📧 Email to **{company}**",
+            value=company in st.session_state[f"selected_emails_{checkpoint['checkpoint_id']}"],
+            key=f"email_select_{checkpoint['checkpoint_id']}_{company}"
+        )
+        
+        if is_selected:
+            selected_emails.append(company)
+        
+        # Email preview in expander
+        with st.expander(f"👀 Preview Email to {company}", expanded=False):
+            # Show risk warning for high-risk companies
+            if company in ["Slack Technologies", "Figma Inc"]:
+                st.warning("🔴 **HIGH RISK COMPANY** - Extra caution recommended")
+            
+            # Extract subject and body with proper null checking
+            try:
+                lines = email_content.split('\n')
+                if lines and lines[0].startswith('Subject:'):
+                    subject = lines[0].replace('Subject:', '').strip()
+                    body = '\n'.join(lines[1:]).strip()
+                else:
+                    subject = f"DevRev Partnership Opportunity for {company}"
+                    body = email_content
+            except Exception as e:
+                # Fallback if email content is malformed
+                subject = f"DevRev Partnership Opportunity for {company}"
+                body = str(email_content) if email_content else "Email content unavailable"
+                st.warning(f"⚠️ Email content formatting issue: {e}")
+            
+            # Show email subject
+            st.markdown(f"**📨 Subject:** {subject}")
+            
+            # Show email content
+            st.markdown("**📄 Email Content:**")
+            st.text_area(
+                "Email",
+                value=body,
+                height=150,
+                disabled=True,
+                key=f"email_preview_{checkpoint['checkpoint_id']}_{company}"
+            )
+            
+            # Quick stats
+            word_count = len(body.split()) if body else 0
+            st.caption(f"📊 {word_count} words • Professional tone • Personalized")
+    
+    # Update session state
+    st.session_state[f"selected_emails_{checkpoint['checkpoint_id']}"] = selected_emails
+    
+    # Show selection summary
+    if selected_emails != list(valid_emails.keys()):
+        excluded = [c for c in valid_emails.keys() if c not in selected_emails]
+        st.warning(f"⚠️ {len(excluded)} emails excluded: {', '.join(excluded)}")
+    
+    st.success(f"✅ {len(selected_emails)} emails selected for sending")
+    
+    # Approval buttons
+    st.markdown("---")
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        if st.button("🚀 Continue with Selected Emails", type="primary", key=f"approve_emails_{checkpoint['checkpoint_id']}", use_container_width=True):
+            if selected_emails:
+                result = approve_checkpoint(
+                    checkpoint['checkpoint_id'], 
+                    'approve', 
+                    f"Selected {len(selected_emails)} emails",
+                    selected_emails=selected_emails
+                )
+                if result:
+                    st.success("✅ Emails approved! Moving to final send...")
+                    time.sleep(1)
+                    st.rerun()
+            else:
+                st.error("❌ Please select at least one email")
+    
+    with col2:
+        if st.button("❌ Cancel Campaign", key=f"cancel_emails_{checkpoint['checkpoint_id']}", use_container_width=True):
+            result = approve_checkpoint(checkpoint['checkpoint_id'], 'reject', "Campaign cancelled")
+            if result:
+                st.error("❌ Campaign cancelled")
+                st.rerun()
+
+
+def render_step_2_email_review(checkpoint):
+    """Step 2: Enhanced Email Review & Selection"""
+    # Progress bar
+    render_progress_bar(2, 3)
+    
+    st.subheader("📧 Step 2: Review & Select Emails")
+    
+    data = checkpoint.get('data', {})
+    emails = data.get('emails', {})
+    companies_with_risk = data.get('companies_with_risk', [])  # Get backend risk data
+    # Note: companies_with_risk may not be available in email_preview step - backend should include this
+    
+    if not emails:
+        st.error("❌ No emails found for review")
+        return
+    
+    # Filter out None email content
+    valid_emails = {company: content for company, content in emails.items() if content is not None}
+    
+    if not valid_emails:
+        st.error("❌ No valid emails found for review")
+        st.warning("All email generation attempts failed. Please try restarting the campaign.")
+        return
+    
+    if len(valid_emails) < len(emails):
+        failed_count = len(emails) - len(valid_emails)
+        st.warning(f"⚠️ {failed_count} emails failed to generate and were excluded")
+    
+    st.success(f"📝 **{len(valid_emails)} personalized emails generated and ready for review**")
+    
+    # Initialize selected emails in session state (all selected by default)
+    session_key = f"selected_emails_{checkpoint['checkpoint_id']}"
+    if session_key not in st.session_state:
+        st.session_state[session_key] = list(valid_emails.keys())
+    
+    # Email selection with previews
+    st.markdown("### 📧 Review & Select Emails:")
+    st.markdown("*All emails are pre-selected. Uncheck to exclude from sending.*")
+    
+    selected_emails = []
+    
+    for company, email_content in valid_emails.items():
+        # Additional safety check
+        if not email_content:
+            st.warning(f"⚠️ Email content for {company} is empty, skipping...")
+            continue
+            
+        # Get company priority info from backend data
+        priority_info = get_company_priority_info(company, companies_with_risk)
+        
+        # Create main container for each email
+        col1, col2 = st.columns([0.05, 0.95])
+        
+        with col1:
+            is_selected = st.checkbox(
+                f"Select email for {company}",
+                value=company in st.session_state[session_key],
+                key=f"email_select_{checkpoint['checkpoint_id']}_{company}",
+                label_visibility="hidden"
+            )
+        
+        with col2:
+            if is_selected:
+                selected_emails.append(company)
+                
+                # Selected email container
+                with st.container():
+                    st.markdown(f"""
+                    <div style="border: 2px solid #10b981; border-radius: 8px; padding: 15px; margin-bottom: 15px; background-color: #f0fdf4;">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+                            <span style="font-weight: 600; font-size: 16px; color: #1f2937;">
+                                📧 Email to {company}
+                            </span>
+                            <span style="font-size: 12px; padding: 4px 8px; background-color: #dcfce7; border-radius: 12px; color: #166534;">
+                                ✅ SELECTED
+                            </span>
+                        </div>
+                        <div style="font-size: 14px; color: #6b7280; margin-bottom: 8px;">
+                            {priority_info['level']} • {priority_info['description']}
+                        </div>
+                    </div>
+                    """, unsafe_allow_html=True)
+                    
+                    # Email preview in expander
+                    with st.expander(f"👀 Preview Email Content for {company}", expanded=False):
+                        # Extract subject and body with proper null checking
+                        try:
+                            lines = email_content.split('\n')
+                            if lines and lines[0].startswith('Subject:'):
+                                subject = lines[0].replace('Subject:', '').strip()
+                                body = '\n'.join(lines[1:]).strip()
+                            else:
+                                subject = f"DevRev Partnership Opportunity for {company}"
+                                body = email_content.strip()
+                        except Exception as e:
+                            # Fallback if email content is malformed
+                            subject = f"DevRev Partnership Opportunity for {company}"
+                            body = str(email_content) if email_content else "Email content unavailable"
+                            st.warning(f"⚠️ Email content formatting issue: {e}")
+                        
+                        # Show email details
+                        st.markdown(f"**📨 Subject:** `{subject}`")
+                        
+                        # Show email content with better formatting
+                        st.markdown("**📄 Email Content:**")
+                        st.text_area(
+                            "Email Body",
+                            value=body,
+                            height=200,
+                            disabled=True,
+                            key=f"email_preview_{checkpoint['checkpoint_id']}_{company}"
+                        )
+                        
+                        # Email quality metrics
+                        word_count = len(body.split()) if body else 0
+                        char_count = len(body) if body else 0
+                        
+                        col_a, col_b, col_c = st.columns(3)
+                        with col_a:
+                            st.metric("Word Count", word_count)
+                        with col_b:
+                            st.metric("Characters", char_count)
+                        with col_c:
+                            personalization_score = "High" if company.lower() in body.lower() else "Medium"
+                            st.metric("Personalization", personalization_score)
+            else:
+                # Deselected email container
+                st.markdown(f"""
+                <div style="border: 1px solid #e5e7eb; border-radius: 8px; padding: 15px; margin-bottom: 15px; background-color: #f9fafb; opacity: 0.6;">
+                    <div style="display: flex; justify-content: space-between; align-items: center;">
+                        <span style="font-weight: 600; font-size: 16px; color: #9ca3af;">
+                            📧 Email to {company}
+                        </span>
+                        <span style="font-size: 12px; padding: 4px 8px; background-color: #fee2e2; border-radius: 12px; color: #dc2626;">
+                            ❌ EXCLUDED
+                        </span>
+                    </div>
+                    <div style="font-size: 14px; color: #9ca3af; margin-top: 8px;">
+                        This email will not be sent
+                    </div>
+                </div>
+                """, unsafe_allow_html=True)
+    
+    # Update session state
+    st.session_state[session_key] = selected_emails
+    
+    # Show selection summary
+    st.markdown("---")
+    
+    if len(selected_emails) != len(valid_emails):
+        excluded_count = len(valid_emails) - len(selected_emails)
+        st.warning(f"⚠️ **{excluded_count} emails excluded** from sending")
+    
+    # Email metrics
+    col1, col2, col3 = st.columns(3)
+    with col1:
+        st.metric("Emails to Send", len(selected_emails))
+    with col2:
+        st.metric("Excluded", len(valid_emails) - len(selected_emails))
+    with col3:
+        # Calculate average words safely
+        total_words = 0
+        for company in selected_emails:
+            email_content = valid_emails.get(company, "")
+            if email_content:
+                total_words += len(email_content.split())
+        avg_words = total_words // max(len(selected_emails), 1)
+        st.metric("Avg Word Count", avg_words)
+    
+    # Action buttons
+    st.markdown("---")
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        if st.button("🚀 Continue to Final Review", type="primary", key=f"approve_emails_{checkpoint['checkpoint_id']}", use_container_width=True):
+            if selected_emails:
+                with st.spinner("Approving emails and preparing for send..."):
+                    result = approve_checkpoint(
+                        checkpoint['checkpoint_id'], 
+                        'approve', 
+                        f"Selected {len(selected_emails)} emails for sending",
+                        selected_emails=selected_emails
+                    )
+                    
+                if result:
+                    st.success(f"✅ {len(selected_emails)} emails approved! Moving to final confirmation...")
+                    time.sleep(1)
+                    st.rerun()
+                else:
+                    st.error("❌ Failed to approve emails. Please try again or check the backend connection.")
+            else:
+                st.error("❌ Please select at least one email to continue")
+    
+    with col2:
+        if st.button("❌ Cancel Campaign", key=f"cancel_emails_{checkpoint['checkpoint_id']}", use_container_width=True):
+            result = approve_checkpoint(checkpoint['checkpoint_id'], 'reject', "Campaign cancelled by user")
+            if result:
+                st.error("❌ Campaign cancelled")
+                st.rerun()
 
 def render_email_preview_checkpoint(checkpoint):
     """Step 2: Review & Select Emails"""
