@@ -607,24 +607,22 @@ async def start_agent_campaign(request: AgentCampaignRequest):
 async def approve_checkpoint(decision: CheckpointDecision):
     checkpoint_id = decision.checkpoint_id
     
-    if checkpoint_id not in checkpoint_manager.pending_checkpoints:
+    # Use the new database method to get checkpoint
+    checkpoint = checkpoint_manager.get_checkpoint(checkpoint_id)
+    if not checkpoint:
         raise HTTPException(status_code=404, detail="Checkpoint not found")
     
-    checkpoint = checkpoint_manager.pending_checkpoints[checkpoint_id]
+    # Check if checkpoint is already resolved
+    if checkpoint.resolved_at:
+        raise HTTPException(status_code=400, detail="Checkpoint already resolved")
     
-    agent = None
-    for agent_obj in agent_manager.agents.values():
-        for cp in agent_obj.checkpoints:
-            if cp.checkpoint_id == checkpoint_id:
-                agent = agent_obj
-                break
-        if agent:
-            break
-    
+    # Get the agent
+    agent = agent_manager.get_agent(checkpoint.job_id)
     if not agent:
         raise HTTPException(status_code=404, detail="Agent not found")
     
     if decision.decision == "approve":
+        # Resolve the checkpoint
         success = checkpoint_manager.resolve_checkpoint(checkpoint_id, "approve", decision.feedback or "Approved")
         
         if not success:
@@ -633,7 +631,6 @@ async def approve_checkpoint(decision: CheckpointDecision):
         if checkpoint.type == "plan_approval":
             selected_companies = decision.selected_companies or checkpoint.data.get('companies', [])
             agent.selected_companies = selected_companies
-            
             agent.status = "executing"
             agent.current_step = "fetching_contexts"
             agent.update_progress()
@@ -677,6 +674,7 @@ async def approve_checkpoint(decision: CheckpointDecision):
         checkpoint_manager.resolve_checkpoint(checkpoint_id, "reject", decision.feedback or "Rejected")
         agent.status = "failed"
         agent.current_step = "cancelled"
+        agent.save()  # Save the updated agent status
         message = "❌ Campaign cancelled"
         
     else:
@@ -819,7 +817,6 @@ async def send_sophisticated_emails_for_agent(agent, checkpoint):
         agent.status = "failed"
         logging.error(f"Sophisticated email sending failed: {e}")
 
-# Rest of the API endpoints remain the same...
 @app.get("/agent-status/{job_id}")
 async def get_agent_status(job_id: str):
     agent = agent_manager.get_agent(job_id)
@@ -851,6 +848,7 @@ async def get_agent_status(job_id: str):
             for cp in pending_checkpoints
         ]
     }
+
 @app.get("/agent-dashboard")
 async def get_agent_dashboard():
     active_agents = agent_manager.list_active_agents()
