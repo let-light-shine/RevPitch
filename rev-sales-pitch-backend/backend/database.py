@@ -294,21 +294,23 @@ class PersistentCheckpointManager:
         
         return count
     
-    def create_checkpoint(self, job_id: str, checkpoint_type: str, data: Dict, message: str):
-        """Create new checkpoint"""
-        self.checkpoint_counter += 1
-        checkpoint_id = f"checkpoint_{self.checkpoint_counter}"
-        
-        checkpoint = PersistentCheckpoint(checkpoint_id, job_id, checkpoint_type, data, message)
-        
-        # Update agent status if supervised
-        agent = PersistentAgent.load(job_id)
-        if agent and agent.autonomy_level == "supervised":
-            agent.status = "waiting_approval"
-            agent.save()
-        
-        logging.info(f"Created checkpoint {checkpoint_id} for agent {job_id}")
-        return checkpoint
+def create_checkpoint(self, job_id: str, checkpoint_type: str, data: Dict, message: str):
+    """Create new checkpoint"""
+    self.checkpoint_counter += 1
+    checkpoint_id = f"checkpoint_{self.checkpoint_counter}"
+    
+    checkpoint = PersistentCheckpoint(checkpoint_id, job_id, checkpoint_type, data, message)
+    
+    # Update agent status if supervised - FIX THIS PART
+    agent = PersistentAgent.load(job_id)
+    if agent and agent.autonomy_level == "supervised":
+        print(f"🔍 [DEBUG] Setting agent {job_id} to waiting_approval")
+        agent.status = "waiting_approval"
+        agent.save()
+        print(f"✅ [DEBUG] Agent {job_id} status updated to: {agent.status}")
+    
+    logging.info(f"Created checkpoint {checkpoint_id} for agent {job_id}")
+    return checkpoint
     
     def get_checkpoint(self, checkpoint_id: str):
         """Get checkpoint by ID"""
