@@ -1,6 +1,7 @@
 # FastAPI web framework
 fastapi
 uvicorn[standard]
+gunicorn
 
 # Pydantic for data models
 pydantic
