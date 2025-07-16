@@ -747,7 +747,7 @@ async def run_enhanced_campaign(sector: str, job_id: str, recipient_email: str, 
         print(f"🚀 [DEBUG] Starting campaign - Job ID: {job_id}, Autonomy: {autonomy_level}")
         
         # Simple company discovery using existing sector companies
-        companies = SECTOR_COMPANIES.get(sector, [])[:5]  # Use predefined companies
+        companies = SECTOR_COMPANIES.get(sector, [])[:3]  # Use predefined companies
         
         print(f"✅ [DEBUG] Companies discovered: {companies}")
         
