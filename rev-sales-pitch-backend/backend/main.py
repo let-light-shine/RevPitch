@@ -14,6 +14,8 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, EmailStr
 from dotenv import load_dotenv
+from database import persistent_agent_manager as agent_manager
+from database import persistent_checkpoint_manager as checkpoint_manager
 
 # Load environment variables
 load_dotenv()
@@ -513,10 +515,8 @@ class SimpleCheckpointManager:
             return True
         return False
 
-agent_manager = SimpleAgentManager()
-checkpoint_manager = SimpleCheckpointManager()
 
-# Campaign runner using your exact discovery logic
+
 async def run_enhanced_campaign(sector: str, job_id: str, recipient_email: str, autonomy_level: str):
     agent = agent_manager.get_agent(job_id)
     if not agent:
@@ -527,29 +527,14 @@ async def run_enhanced_campaign(sector: str, job_id: str, recipient_email: str, 
     agent.recipient_email = recipient_email
     
     try:
-        print("🚀 [START] Running campaign...")
-        logging.info("🔍 Discovering companies...")
+        print(f"🚀 [DEBUG] Starting campaign - Job ID: {job_id}, Autonomy: {autonomy_level}")
         
-        # Your exact company discovery logic
-        resp = await retry_llm_invoke(discover_prompt.format(sector=sector))
-        raw = resp.content.strip()
+        # Simple company discovery using existing sector companies
+        companies = SECTOR_COMPANIES.get(sector, [])[:5]  # Use predefined companies
         
-        try:
-            companies = json.loads(raw)
-        except json.JSONDecodeError:
-            try:
-                companies = ast.literal_eval(raw)
-            except Exception as e:
-                logging.error(f"Failed to parse company list from LLM. Raw:\n{raw}")
-                raise ValueError("❌ LLM response not in list format. Update prompt or parser.") from e
+        print(f"✅ [DEBUG] Companies discovered: {companies}")
         
-        if isinstance(companies[0], dict) and "name" in companies[0]:
-            companies = [c["name"] for c in companies]
-        
-        companies = companies[:5]  # Limit for testing
-        
-        print(f"✅ Companies discovered: {companies}")
-        
+        # Create companies with risk assessment
         companies_with_risk = []
         for company in companies:
             risk_info = get_company_risk_info(company)
@@ -559,6 +544,7 @@ async def run_enhanced_campaign(sector: str, job_id: str, recipient_email: str, 
                 "risk_reason": risk_info["reason"]
             })
         
+        # Create plan data
         plan_data = {
             "sector": sector,
             "companies": companies,
@@ -568,12 +554,24 @@ async def run_enhanced_campaign(sector: str, job_id: str, recipient_email: str, 
             "current_step": 1
         }
         
-        checkpoint_manager.create_checkpoint(job_id, "plan_approval", plan_data, 
-                                           f"Review campaign plan for {sector} sector with {len(companies)} companies")
+        print(f"🔍 [DEBUG] Agent autonomy level: {agent.autonomy_level}")
+        print(f"🔍 [DEBUG] Creating checkpoint for job_id: {job_id}")
+        
+        # Create checkpoint
+        checkpoint = checkpoint_manager.create_checkpoint(
+            job_id, 
+            "plan_approval", 
+            plan_data, 
+            f"Review campaign plan for {sector} sector with {len(companies)} companies"
+        )
+        
+        print(f"✅ [DEBUG] Checkpoint created: {checkpoint.checkpoint_id}")
+        print(f"✅ [DEBUG] Agent status after checkpoint: {agent.status}")
         
         return {"status": "checkpoint_created", "companies": companies}
         
     except Exception as e:
+        print(f"❌ [ERROR] Campaign failed: {str(e)}")
         agent.status = "failed"
         return {"status": "failed", "error": str(e)}
 
@@ -960,3 +958,20 @@ async def root():
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8000)
+
+@app.post("/debug/cleanup")
+async def cleanup_database():
+    """Cleanup database for testing"""
+    if os.getenv("ENVIRONMENT") != "production":
+        import os
+        db_path = "revreach_agents.db"
+        if os.path.exists(db_path):
+            os.remove(db_path)
+        
+        # Reinitialize database
+        from database import db_manager
+        db_manager.init_database()
+        
+        return {"message": "Database cleaned up"}
+    else:
+        return {"error": "Not allowed in production"}
