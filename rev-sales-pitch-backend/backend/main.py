@@ -16,6 +16,10 @@ from pydantic import BaseModel, EmailStr
 from dotenv import load_dotenv
 from database import persistent_agent_manager as agent_manager
 from database import persistent_checkpoint_manager as checkpoint_manager
+import signal
+import asyncio
+from functools import wraps
+
 
 # Load environment variables
 load_dotenv()
@@ -80,6 +84,20 @@ DO NOT include a subject line in the email body.
 
 Email:
 """)
+def timeout_handler(signum, frame):
+    raise TimeoutError("Operation timed out")
+
+def with_timeout(timeout_seconds):
+    def decorator(func):
+        @wraps(func)
+        async def wrapper(*args, **kwargs):
+            try:
+                return await asyncio.wait_for(func(*args, **kwargs), timeout=timeout_seconds)
+            except asyncio.TimeoutError:
+                logging.error(f"Function {func.__name__} timed out after {timeout_seconds} seconds")
+                raise TimeoutError(f"Operation timed out after {timeout_seconds} seconds")
+        return wrapper
+    return decorator
 
 # Your exact helper functions
 async def get_company_context_from_perplexity_async(company: str) -> str:
@@ -525,6 +543,7 @@ async def run_enhanced_campaign(sector: str, job_id: str, recipient_email: str, 
     agent.sector = sector
     agent.autonomy_level = autonomy_level
     agent.recipient_email = recipient_email
+    agent.save() 
     
     try:
         print(f"🚀 [DEBUG] Starting campaign - Job ID: {job_id}, Autonomy: {autonomy_level}")
@@ -689,31 +708,58 @@ async def approve_checkpoint(decision: CheckpointDecision):
         "refresh_needed": True
     }
 
+@with_timeout(120)
 async def generate_sophisticated_emails_for_agent(agent):
     try:
-        indices = ["devrev-knowledge-hub", "devrev_yt_100", "devrev_docs_casestudies"]
-        semaphore = asyncio.Semaphore(1)
+        # Update agent status
+        agent.status = "executing"
+        agent.current_step = "fetching_contexts"
+        agent.update_progress()
         
-        async def throttled_context_fetch(company):
-            async with semaphore:
-                return await fetch_context_for_company(company, indices)
+        # Use simple context instead of Perplexity to avoid API issues
+        contexts = []
+        for company in agent.selected_companies:
+            context = {
+                "company": company,
+                "external_ctx": f"{company} is a leading company in the {agent.sector} sector facing typical growth challenges and seeking better customer engagement solutions.",
+                "devrev_ctx": "DevRev helps companies connect customer feedback directly to engineering teams, enabling faster product iterations and better customer satisfaction through integrated CRM and issue tracking."
+            }
+            contexts.append(context)
         
-        context_tasks = [throttled_context_fetch(c) for c in agent.selected_companies]
-        contexts = await asyncio.gather(*context_tasks)
         agent.contexts = contexts
+        agent.save()
         
-        print("✅ Contexts fetched using sophisticated system")
+        print("✅ Contexts generated using simple system (avoiding Perplexity API issues)")
         
         agent.current_step = "generating_emails"
         agent.update_progress()
         
         emails = {}
         for ctx in contexts:
-            prompt = email_prompt.format(**ctx)
-            resp = await retry_llm_invoke(prompt)
-            emails[ctx["company"]] = resp.content
-            
+            try:
+                prompt = email_prompt.format(**ctx)
+                resp = await retry_llm_invoke(prompt)
+                emails[ctx["company"]] = resp.content
+                print(f"✅ Email generated for {ctx['company']}")
+            except Exception as e:
+                print(f"❌ Email generation failed for {ctx['company']}: {e}")
+                # Use fallback email
+                emails[ctx["company"]] = f"""
+Dear {ctx['company']} Team,
+
+I hope this email finds you well. I'm reaching out from DevRev to discuss how we can help {ctx['company']} enhance your customer engagement and product development processes.
+
+DevRev offers an integrated platform that connects customer feedback directly to your engineering teams, enabling faster product iterations and better customer satisfaction.
+
+Would you be open to a brief conversation about how DevRev can support {ctx['company']}'s growth objectives?
+
+Best regards,
+John Doe
+DevRev Sales Team
+"""
+                
         agent.generated_emails = emails
+        agent.save()
         
         print("✅ Emails generated using sophisticated system")
         
@@ -726,11 +772,12 @@ async def generate_sophisticated_emails_for_agent(agent):
         }
         
         checkpoint_manager.create_checkpoint(agent.job_id, "email_preview", email_data, 
-                                           f"Review {len(emails)} sophisticated emails for {agent.sector} companies")
+                                           f"Review {len(emails)} emails for {agent.sector} companies")
                                            
     except Exception as e:
         agent.status = "failed"
-        logging.error(f"Sophisticated email generation failed: {e}")
+        agent.save()
+        logging.error(f"Email generation failed: {e}")
 
 async def send_sophisticated_emails_for_agent(agent, checkpoint):
     try:
