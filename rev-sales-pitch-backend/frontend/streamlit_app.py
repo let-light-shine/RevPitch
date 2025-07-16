@@ -206,44 +206,6 @@ def approvals_tab():
     
     dashboard = get_agent_dashboard()
     
-    # Show metrics in sidebar
-    dashboard = get_agent_dashboard()
-    if dashboard:
-        summary = dashboard.get('summary', {})
-        
-        st.sidebar.metric("Active Campaigns", summary.get('active_agents', 0))
-        st.sidebar.metric("Pending Approvals", summary.get('pending_checkpoints', 0))
-        
-        # More detailed status based on agent states
-        active_agents = dashboard.get('active_agents', [])
-        if any(agent.get('status') == 'waiting_approval' for agent in active_agents):
-            # Check what type of approval is needed
-            waiting_agents = [agent for agent in active_agents if agent.get('status') == 'waiting_approval']
-            if len(waiting_agents) > 0:
-                # Get the first waiting agent to determine status
-                agent = waiting_agents[0]
-                agent_details = get_agent_status(agent['job_id'])
-                if agent_details and agent_details.get('pending_checkpoints'):
-                    checkpoint = agent_details['pending_checkpoints'][0]
-                    checkpoint_type = checkpoint.get('type', '')
-                    
-                    if checkpoint_type == 'plan_approval':
-                        st.sidebar.warning("⏳ Waiting for company selection")
-                    elif checkpoint_type == 'email_preview':
-                        st.sidebar.warning("⏳ Waiting for email review")
-                    elif checkpoint_type == 'bulk_send_approval':
-                        st.sidebar.warning("⏳ Waiting for send confirmation")
-                    else:
-                        st.sidebar.error("🚨 Approvals needed")
-                else:
-                    st.sidebar.error("🚨 Approvals needed")
-        elif any(agent.get('status') in ['generating_emails', 'processing'] for agent in active_agents):
-            st.sidebar.info("🔄 Processing campaign...")
-        elif summary.get('pending_checkpoints', 0) > 0:
-            st.sidebar.error("🚨 Approvals needed")
-        else:
-            st.sidebar.success("✅ All approved")
-    
     if not dashboard:
         st.error("Cannot connect to system")
         st.info("💡 **Troubleshooting**: Make sure the backend API is running on the correct port")
@@ -253,44 +215,71 @@ def approvals_tab():
     with st.expander("🔍 Debug Information", expanded=False):
         st.json(dashboard)
     
-    # Find agents needing approval
-    pending_agents = []
-    for agent in dashboard.get('active_agents', []):
-        if agent.get('status') == 'waiting_approval':
-            pending_agents.append(agent)
+    # Get all active agents (not just waiting for approval)
+    active_agents = dashboard.get('active_agents', [])
     
-    if not pending_agents:
-        st.success("✅ No pending approvals")
-        st.info("All campaigns are running smoothly")
-        
-        # Show active agents for reference
-        active_agents = dashboard.get('active_agents', [])
-        if active_agents:
-            st.markdown("### 📊 Active Campaigns")
-            for agent in active_agents:
-                st.markdown(f"- **{agent.get('sector', 'Unknown')}**: {agent.get('status', 'unknown')} ({agent.get('progress', 0)}%)")
+    if not active_agents:
+        st.success("✅ No active campaigns")
+        st.info("Start a new campaign from the Campaigns tab")
         return
     
-    # Process each pending agent
-    for agent in pending_agents:
+    # Show progress for all active agents
+    campaigns_shown = False
+    
+    for agent in active_agents:
         job_id = agent['job_id']
         sector = agent.get('sector', 'Unknown')
+        status = agent.get('status', 'unknown')
         
-        agent_details = get_agent_status(job_id)
+        st.markdown(f"### 📋 {sector} Campaign - {job_id[:8]}")
         
-        if agent_details and agent_details.get('pending_checkpoints'):
-            st.markdown(f"### 📋 {sector} Campaign - {job_id[:8]}")
-            
-            for checkpoint in agent_details['pending_checkpoints']:
+        # Always show progress bar for active campaigns
+        if status == 'waiting_approval':
+            # Agent is waiting for approval - show current step
+            agent_details = get_agent_status(job_id)
+            if agent_details and agent_details.get('pending_checkpoints'):
+                checkpoint = agent_details['pending_checkpoints'][0]
                 checkpoint_type = checkpoint['type']
                 
-                # Route to specific step renderers
                 if checkpoint_type == 'plan_approval':
                     render_step_1_company_selection(checkpoint)
                 elif checkpoint_type == 'email_preview':
                     render_step_2_email_review(checkpoint)
                 elif checkpoint_type == 'bulk_send_approval':
                     render_step_3_final_confirmation(checkpoint)
+                campaigns_shown = True
+        
+        elif status in ['generating_emails', 'processing']:
+            # Agent is processing between steps
+            render_progress_bar(2, 3)  # Show step 2 progress
+            st.info("🔄 **Generating personalized emails...** This may take a few moments.")
+            st.markdown("The AI agent is creating tailored email content for each selected company. Please wait while this completes.")
+            
+            # Auto-refresh every 5 seconds
+            st.markdown("*This page will automatically refresh when emails are ready for review.*")
+            time.sleep(2)
+            st.rerun()
+            campaigns_shown = True
+            
+        elif status == 'executing':
+            # Campaign is running
+            progress = agent.get('progress', 0)
+            st.info(f"🚀 **Campaign executing** - {progress}% complete")
+            campaigns_shown = True
+            
+        elif status == 'completed':
+            # Campaign completed
+            st.success("✅ **Campaign completed successfully!**")
+            campaigns_shown = True
+        
+        else:
+            # Unknown status
+            st.warning(f"⚠️ **Campaign status:** {status}")
+            campaigns_shown = True
+    
+    if not campaigns_shown:
+        st.success("✅ No pending approvals")
+        st.info("All campaigns are running smoothly")
 
 def render_progress_bar(current_step, total_steps=3):
     """Render progress bar for approval steps"""
@@ -1037,14 +1026,41 @@ def main():
     
     # Show metrics in sidebar
     dashboard = get_agent_dashboard()
+    # Show metrics in sidebar  
+    dashboard = get_agent_dashboard()
     if dashboard:
         summary = dashboard.get('summary', {})
         
         st.sidebar.metric("Active Campaigns", summary.get('active_agents', 0))
         st.sidebar.metric("Pending Approvals", summary.get('pending_checkpoints', 0))
         
-        if summary.get('pending_checkpoints', 0) > 0:
-            st.sidebar.error("🚨 Approvals needed")
+        # Check actual agent status
+        active_agents = dashboard.get('active_agents', [])
+        if active_agents:
+            agent = active_agents[0]  # Check first active agent
+            status = agent.get('status', 'unknown')
+            
+            if status == 'waiting_approval':
+                agent_details = get_agent_status(agent['job_id'])
+                if agent_details and agent_details.get('pending_checkpoints'):
+                    checkpoint_type = agent_details['pending_checkpoints'][0].get('type', '')
+                    if checkpoint_type == 'plan_approval':
+                        st.sidebar.warning("⏳ Waiting for company selection")
+                    elif checkpoint_type == 'email_preview':
+                        st.sidebar.warning("⏳ Waiting for email review")
+                    elif checkpoint_type == 'bulk_send_approval':
+                        st.sidebar.warning("⏳ Waiting for send confirmation")
+                    else:
+                        st.sidebar.error("🚨 Approvals needed")
+            elif status in ['generating_emails', 'processing']:
+                st.sidebar.info("🔄 Generating emails...")
+            elif status == 'executing':
+                progress = agent.get('progress', 0)
+                st.sidebar.info(f"🚀 Campaign running ({progress}%)")
+            elif status == 'completed':
+                st.sidebar.success("✅ Campaign completed")
+            else:
+                st.sidebar.success("✅ All approved")
         else:
             st.sidebar.success("✅ All approved")
     
