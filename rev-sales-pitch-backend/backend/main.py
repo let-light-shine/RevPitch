@@ -851,12 +851,13 @@ async def get_agent_status(job_id: str):
             for cp in pending_checkpoints
         ]
     }
-
 @app.get("/agent-dashboard")
 async def get_agent_dashboard():
     active_agents = agent_manager.list_active_agents()
-    all_pending = []
+    all_agents = agent_manager.get_all_agents()  # Use get_all_agents() instead of .agents
     
+    # Get all pending checkpoints
+    all_pending = []
     for agent in active_agents:
         pending = checkpoint_manager.get_pending_checkpoints(agent.job_id)
         all_pending.extend(pending)
@@ -868,7 +869,7 @@ async def get_agent_dashboard():
             "active_agents": len(active_agents),
             "pending_checkpoints": len(all_pending),
             "emails_sent_today": analytics["total_emails_today"],
-            "total_campaigns_today": len(agent_manager.agents)
+            "total_campaigns_today": len(all_agents)  # Fixed this line
         },
         "active_agents": [
             {
@@ -992,7 +993,7 @@ async def get_agent_dashboard():
             "active_agents": len(active_agents),
             "pending_checkpoints": len(all_pending),
             "emails_sent_today": analytics["total_emails_today"],
-            "total_campaigns_today": len(all_agents)
+            "total_campaigns_today": len(agent_manager.get_all_agents())
         },
         "active_agents": [
             {
