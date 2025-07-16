@@ -975,3 +975,52 @@ async def cleanup_database():
         return {"message": "Database cleaned up"}
     else:
         return {"error": "Not allowed in production"}
+    
+@app.get("/agent-dashboard")
+async def get_agent_dashboard():
+    active_agents = agent_manager.list_active_agents()
+    all_agents = agent_manager.get_all_agents()  # Get all agents for total count
+    
+    # Get all pending checkpoints
+    all_pending = checkpoint_manager.get_all_pending_checkpoints()
+    
+    # Get analytics
+    analytics = email_db.get_analytics()
+    
+    return {
+        "summary": {
+            "active_agents": len(active_agents),
+            "pending_checkpoints": len(all_pending),
+            "emails_sent_today": analytics["total_emails_today"],
+            "total_campaigns_today": len(all_agents)
+        },
+        "active_agents": [
+            {
+                "job_id": agent.job_id,
+                "status": agent.status,
+                "current_step": agent.current_step,
+                "progress": agent.progress,
+                "sector": agent.sector,
+                "autonomy_level": agent.autonomy_level,
+                "pending_checkpoints": len(checkpoint_manager.get_pending_checkpoints(agent.job_id)),
+                "created_at": agent.created_at.isoformat()
+            }
+            for agent in active_agents
+        ]
+    }
+
+@app.get("/debug/all-agents")
+async def debug_all_agents():
+    all_agents = agent_manager.get_all_agents()
+    return {
+        "total_agents": len(all_agents),
+        "agents": [
+            {
+                "job_id": agent.job_id,
+                "status": agent.status,
+                "created_at": agent.created_at.isoformat(),
+                "autonomy_level": agent.autonomy_level
+            }
+            for agent in all_agents
+        ]
+    }

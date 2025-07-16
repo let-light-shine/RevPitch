@@ -377,6 +377,29 @@ class PersistentCheckpointManager:
                 checkpoints.append(checkpoint)
         
         return checkpoints
+    
+    # Add this method to PersistentCheckpointManager class in database.py
+def get_all_pending_checkpoints(self):
+    """Get all pending checkpoints across all agents"""
+    conn = sqlite3.connect(db_manager.db_path)
+    cursor = conn.cursor()
+    
+    cursor.execute('''
+        SELECT checkpoint_id FROM checkpoints 
+        WHERE resolved_at IS NULL
+        ORDER BY created_at ASC
+    ''')
+    
+    checkpoint_ids = [row[0] for row in cursor.fetchall()]
+    conn.close()
+    
+    checkpoints = []
+    for checkpoint_id in checkpoint_ids:
+        checkpoint = self.get_checkpoint(checkpoint_id)
+        if checkpoint:
+            checkpoints.append(checkpoint)
+    
+    return checkpoints
 
 # Create persistent managers
 persistent_agent_manager = PersistentAgentManager()
