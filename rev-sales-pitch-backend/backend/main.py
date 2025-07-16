@@ -121,7 +121,7 @@ async def get_company_context_from_perplexity_async(company: str) -> str:
     }
     
     payload = {
-        "model": "llama-3-sonar-small-32k-online",
+        "model": "sonar-pro",
         "messages": [
             {
                 "role": "user", 
@@ -242,7 +242,7 @@ async def get_company_context_from_perplexity_async(company: str) -> str:
         
         # Simplified payload - removing problematic fields
         payload = {
-            "model": "llama-3.1-sonar-small-32k-online",
+            "model": "sonar-pro",
             "messages": [
                 {
                     "role": "system", 
