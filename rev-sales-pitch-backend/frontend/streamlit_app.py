@@ -11,7 +11,7 @@ import json
 # Configure page
 st.set_page_config(
     page_title="RevReach Sales Agent",
-    page_icon="🎯",
+    page_icon="📈",
     layout="wide",
     initial_sidebar_state="expanded"
 )
@@ -29,6 +29,22 @@ st.markdown("""
 .stButton > button {
     width: 100%;
     height: 3rem;
+}
+
+.revreach-header {
+    background: linear-gradient(135deg, #0e1547, #1a237e);
+    padding: 20px;
+    border-radius: 10px;
+    margin-bottom: 20px;
+    color: white;
+    text-align: center;
+}
+
+.field-label {
+    font-size: 18px;
+    font-weight: 600;
+    color: #1f2937;
+    margin-bottom: 8px;
 }
 </style>
 """, unsafe_allow_html=True)
@@ -74,35 +90,71 @@ def get_agent_status(job_id):
 def campaigns_tab():
     """Clean campaign creation"""
     
-    # Simple header
-    st.title("🎯 RevReach Agent")
-    st.subheader("AI-Powered Sales Campaign Manager")
+    # Enhanced header with navy blue background
+    st.markdown("""
+    <div class="revreach-header">
+        <h1>📈 RevReach Agent</h1>
+        <h3>Launch Hyper-Personalized Campaigns with AI & Confidence</h3>
+    </div>
+    """, unsafe_allow_html=True)
     
     st.markdown("---")
     
-    # Simple form
-    st.header("Start New Campaign")
+    # Campaign Configuration section
+    st.header("Campaign Configuration")
     
-    # Form fields
+    # Target Sector with info button
+    st.markdown('<p class="field-label">Target Sector <span style="color: #666; cursor: help;" title="The sector helps our AI agent discover relevant companies and tailor email context to industry-specific challenges.">ℹ️</span></p>', unsafe_allow_html=True)
     sector = st.selectbox(
-        "**Target Sector**",
+        "Target Sector",
         ["SaaS", "FinTech", "Healthcare", "E-commerce", "EdTech", "CleanTech"],
-        index=0
-    )
-    
-    email = st.text_input(
-        "**Test Email**",
-        placeholder="your.email@company.com"
-    )
-    
-    st.info("📧 **Testing Mode:** All emails will be sent to this address for validation")
-    
-    autonomy = st.selectbox(
-        "**Campaign Mode**",
-        ["supervised", "automatic"],
         index=0,
-        help="Supervised: Human approval required. Automatic: Minimal intervention."
+        help="The sector helps our AI agent discover relevant companies and tailor email context to industry-specific challenges.",
+        label_visibility="collapsed"
     )
+    
+    # Test Email with info button
+    st.markdown('<p class="field-label">Test Email <span style="color: #666; cursor: help;" title="In testing mode, all campaign emails will be routed here. In a production environment, this would be the actual recipient\'s email.">ℹ️</span></p>', unsafe_allow_html=True)
+    email = st.text_input(
+        "Test Email",
+        placeholder="your.email@company.com",
+        help="In testing mode, all campaign emails will be routed here. In a production environment, this would be the actual recipient's email.",
+        label_visibility="collapsed"
+    )
+    
+    # Subtle testing mode notice right after email field
+    st.markdown("""
+    <div style="background-color: #fef3c7; padding: 8px 12px; border-radius: 4px; margin-top: 5px; margin-bottom: 15px;">
+        <span style="color: #92400e; font-size: 14px;">📧 Testing Mode: All emails will be sent to this email address</span>
+    </div>
+    """, unsafe_allow_html=True)
+    
+    # Campaign Mode with info button
+    st.markdown('<p class="field-label">Campaign Mode <span style="color: #666; cursor: help;" title="Supervised: Requires human approval at key stages. Automatic: AI agent proceeds autonomously with minimal interruptions.">ℹ️</span></p>', unsafe_allow_html=True)
+    autonomy = st.selectbox(
+        "Campaign Mode",
+        [
+            "Supervised - requires approval at key stages",
+            "Automatic - agent takes care end to end"
+        ],
+        index=0,
+        help="Supervised: Requires human approval at key stages (plan, email preview, bulk send). Ideal for high-risk campaigns or new users. | Automatic: AI agent proceeds autonomously with minimal interruptions. Best for low-risk, high-volume campaigns once confidence is established.",
+        label_visibility="collapsed"
+    )
+    
+    # Extract the actual mode value for backend
+    autonomy_value = "supervised" if "Supervised" in autonomy else "automatic"
+    
+    # Campaign Summary (conceptual)
+    st.markdown("### 📊 Campaign Summary")
+    col1, col2, col3 = st.columns(3)
+    with col1:
+        st.metric("Estimated Companies", "5")
+    with col2:
+        st.metric("Estimated Duration", "~3 mins")
+    with col3:
+        mode_color = "🟡" if autonomy_value == "supervised" else "🟢"
+        st.metric("Mode", f"{mode_color} {autonomy_value.title()}")
     
     # Launch button
     if st.button("🚀 Launch Campaign", type="primary"):
@@ -112,13 +164,13 @@ def campaigns_tab():
             st.error("Please enter a valid email address")
         else:
             with st.spinner(f"Starting {sector} campaign..."):
-                result = start_campaign(sector, email, autonomy)
+                result = start_campaign(sector, email, autonomy_value)
             
             if result:
                 st.success(f"✅ {sector} campaign launched successfully!")
                 st.info(f"Campaign ID: {result['job_id'][:8]}")
                 
-                if autonomy == "supervised":
+                if autonomy_value == "supervised":
                     st.warning("⏳ Approval required - Check Approvals tab")
                 else:
                     st.info("🤖 Running automatically - Check Analytics tab")
@@ -147,32 +199,50 @@ def approve_checkpoint(checkpoint_id, decision, feedback=None, selected_companie
         st.error(f"Approval error: {e}")
         return None
 
-def approve_checkpoint(checkpoint_id, decision, feedback=None, selected_companies=None, selected_emails=None):
-    """Approve a checkpoint with selections"""
-    try:
-        payload = {
-            "checkpoint_id": checkpoint_id,
-            "decision": decision,
-            "feedback": feedback
-        }
-        
-        if selected_companies:
-            payload["selected_companies"] = selected_companies
-        if selected_emails:
-            payload["selected_emails"] = selected_emails
-            
-        response = requests.post(f"{API_BASE}/approve-checkpoint", json=payload)
-        return response.json() if response.status_code == 200 else None
-    except Exception as e:
-        st.error(f"Approval error: {e}")
-        return None
-
 def approvals_tab():
     """Refined 3-step approval workflow"""
     st.title("⚙️ Approvals")
     st.write("Review and approve pending campaign decisions")
     
     dashboard = get_agent_dashboard()
+    
+    # Show metrics in sidebar
+    dashboard = get_agent_dashboard()
+    if dashboard:
+        summary = dashboard.get('summary', {})
+        
+        st.sidebar.metric("Active Campaigns", summary.get('active_agents', 0))
+        st.sidebar.metric("Pending Approvals", summary.get('pending_checkpoints', 0))
+        
+        # More detailed status based on agent states
+        active_agents = dashboard.get('active_agents', [])
+        if any(agent.get('status') == 'waiting_approval' for agent in active_agents):
+            # Check what type of approval is needed
+            waiting_agents = [agent for agent in active_agents if agent.get('status') == 'waiting_approval']
+            if len(waiting_agents) > 0:
+                # Get the first waiting agent to determine status
+                agent = waiting_agents[0]
+                agent_details = get_agent_status(agent['job_id'])
+                if agent_details and agent_details.get('pending_checkpoints'):
+                    checkpoint = agent_details['pending_checkpoints'][0]
+                    checkpoint_type = checkpoint.get('type', '')
+                    
+                    if checkpoint_type == 'plan_approval':
+                        st.sidebar.warning("⏳ Waiting for company selection")
+                    elif checkpoint_type == 'email_preview':
+                        st.sidebar.warning("⏳ Waiting for email review")
+                    elif checkpoint_type == 'bulk_send_approval':
+                        st.sidebar.warning("⏳ Waiting for send confirmation")
+                    else:
+                        st.sidebar.error("🚨 Approvals needed")
+                else:
+                    st.sidebar.error("🚨 Approvals needed")
+        elif any(agent.get('status') in ['generating_emails', 'processing'] for agent in active_agents):
+            st.sidebar.info("🔄 Processing campaign...")
+        elif summary.get('pending_checkpoints', 0) > 0:
+            st.sidebar.error("🚨 Approvals needed")
+        else:
+            st.sidebar.success("✅ All approved")
     
     if not dashboard:
         st.error("Cannot connect to system")
