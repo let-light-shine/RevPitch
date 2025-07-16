@@ -17,7 +17,8 @@ st.set_page_config(
 )
 
 # API Base URL
-API_BASE = os.getenv("API_BASE_URL", "http://localhost:8000")
+#API_BASE = os.getenv("API_BASE_URL", "http://localhost:8000")
+API_URL_BASE="https://revreach-agent-api.onrender.com"
 
 # Simple, clean CSS - minimal styling only
 st.markdown("""
@@ -1020,7 +1021,7 @@ def analytics_tab():
 
 def main():
     """Simple main function"""
-    
+    st.error(f"🔍 DEBUG: API_BASE = {API_BASE}")
     # Sidebar
     st.sidebar.title("🎛️ Control Panel")
     
