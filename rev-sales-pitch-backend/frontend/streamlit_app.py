@@ -1021,7 +1021,6 @@ def analytics_tab():
 
 def main():
     """Simple main function"""
-    st.error(f"🔍 DEBUG: API_BASE = {API_BASE}")
     # Sidebar
     st.sidebar.title("🎛️ Control Panel")
     
