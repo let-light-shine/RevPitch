@@ -205,6 +205,12 @@ def approvals_tab():
     st.title("⚙️ Approvals")
     st.write("Review and approve pending campaign decisions")
     
+    # Add refresh button at the top
+    col1, col2, col3 = st.columns([1, 1, 1])
+    with col3:
+        if st.button("🔄 Refresh", type="secondary", use_container_width=True):
+            st.rerun()
+
     dashboard = get_agent_dashboard()
     
     if not dashboard:
@@ -273,6 +279,49 @@ def approvals_tab():
             st.success("✅ **Campaign completed successfully!**")
             campaigns_shown = True
         
+        elif status == 'planning':
+            # Agent is stuck in planning - show manual recovery options
+            st.warning("⚠️ **Campaign stuck in planning phase**")
+            
+            # Show manual recovery steps
+            st.info("**Manual Recovery Steps:**")
+            st.markdown("""
+            1. **Wait 2-3 minutes** - Sometimes the agent is just slow to create checkpoints
+            2. **Try starting a new campaign** - The old one will be replaced
+            3. **Check backend logs** - Look for any error messages
+            4. **Clear browser cache** - Sometimes helps with stuck states
+            """)
+            
+            # Simple refresh and restart options
+            col1, col2 = st.columns(2)
+            
+            with col1:
+                if st.button(f"🔄 Wait & Refresh", key=f"refresh_{job_id}", type="primary"):
+                    with st.spinner("Waiting 10 seconds then refreshing..."):
+                        time.sleep(10)
+                        st.rerun()
+            
+            with col2:
+                if st.button(f"🆕 Start New Campaign", key=f"new_{job_id}"):
+                    st.info("Go to the **Campaigns** tab and start a new campaign")
+                    st.markdown("The new campaign will replace this stuck one automatically.")
+            
+            # Show campaign age
+            try:
+                created_at = agent.get('created_at', '')
+                if created_at:
+                    from datetime import datetime
+                    created_time = datetime.fromisoformat(created_at.replace('Z', '+00:00'))
+                    age = datetime.now() - created_time
+                    st.caption(f"Campaign age: {age.seconds // 60} minutes")
+                    
+                    if age.seconds > 300:  # 5 minutes
+                        st.error("🚨 Campaign has been stuck for over 5 minutes - definitely needs intervention")
+            except:
+                pass
+            
+            campaigns_shown = True
+                
         else:
             # Unknown status
             st.warning(f"⚠️ **Campaign status:** {status}")
@@ -281,6 +330,10 @@ def approvals_tab():
     if not campaigns_shown:
         st.success("✅ No pending approvals")
         st.info("All campaigns are running smoothly")
+
+    st.markdown("---")
+    if st.button("🔄 Refresh Page", type="primary", use_container_width=True):
+        st.rerun()
 
 def render_progress_bar(current_step, total_steps=3):
     """Render progress bar for approval steps"""

@@ -1340,3 +1340,165 @@ async def test_apis(company: str):
         }
     
     return results
+
+@app.get("/debug/campaign/{job_id}")
+async def debug_campaign(job_id: str):
+    """Debug a specific campaign"""
+    agent = agent_manager.get_agent(job_id)
+    
+    if not agent:
+        raise HTTPException(status_code=404, detail="Agent not found")
+    
+    # Get detailed agent information
+    pending_checkpoints = checkpoint_manager.get_pending_checkpoints(job_id)
+    
+    debug_info = {
+        "job_id": job_id,
+        "agent_status": agent.status,
+        "current_step": agent.current_step,
+        "progress": agent.progress,
+        "sector": agent.sector,
+        "selected_companies": agent.selected_companies,
+        "pending_checkpoints": len(pending_checkpoints),
+        "checkpoint_details": [
+            {
+                "id": cp.checkpoint_id,
+                "type": cp.type,
+                "created_at": cp.created_at.isoformat(),
+                "resolved": cp.resolved_at is not None
+            }
+            for cp in pending_checkpoints
+        ],
+        "agent_created_at": agent.created_at.isoformat(),
+        "agent_updated_at": agent.updated_at.isoformat()
+    }
+    
+    return debug_info
+
+@app.post("/debug/fix-stuck-campaign/{job_id}")
+async def fix_stuck_campaign(job_id: str):
+    """Try to fix a stuck campaign"""
+    agent = agent_manager.get_agent(job_id)
+    
+    if not agent:
+        raise HTTPException(status_code=404, detail="Agent not found")
+    
+    # If agent is stuck in planning, try to create the initial checkpoint
+    if agent.status == "planning":
+        try:
+            # Use default companies for the sector
+            companies = SECTOR_COMPANIES.get(agent.sector, [])[:3]
+            
+            # Create companies with risk assessment
+            companies_with_risk = []
+            for company in companies:
+                risk_info = get_company_risk_info(company)
+                companies_with_risk.append({
+                    "name": company,
+                    "risk_level": risk_info["risk"],
+                    "risk_reason": risk_info["reason"]
+                })
+            
+            # Create plan data
+            plan_data = {
+                "sector": agent.sector,
+                "companies": companies,
+                "companies_with_risk": companies_with_risk,
+                "recipient_email": agent.recipient_email,
+                "total_steps": 3,
+                "current_step": 1
+            }
+            
+            # Create checkpoint manually
+            checkpoint = checkpoint_manager.create_checkpoint(
+                job_id, 
+                "plan_approval", 
+                plan_data, 
+                f"Review campaign plan for {agent.sector} sector with {len(companies)} companies"
+            )
+            
+            # Update agent status
+            agent.status = "waiting_approval"
+            agent.current_step = "planning"
+            agent.save()
+            
+            return {
+                "message": "Campaign unstuck successfully",
+                "checkpoint_id": checkpoint.checkpoint_id,
+                "companies_found": len(companies),
+                "new_status": agent.status
+            }
+            
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Failed to fix campaign: {str(e)}")
+    
+    else:
+        return {
+            "message": f"Campaign is not stuck (status: {agent.status})",
+            "current_status": agent.status
+        }
+
+@app.post("/debug/restart-campaign/{job_id}")
+async def restart_campaign(job_id: str):
+    """Restart a campaign from scratch"""
+    agent = agent_manager.get_agent(job_id)
+    
+    if not agent:
+        raise HTTPException(status_code=404, detail="Agent not found")
+    
+    try:
+        # Store original campaign details
+        original_sector = agent.sector
+        original_email = agent.recipient_email
+        original_autonomy = agent.autonomy_level
+        
+        # Mark old campaign as failed
+        agent.status = "failed"
+        agent.save()
+        
+        # Create new campaign
+        new_job_id = str(uuid.uuid4())
+        new_agent = agent_manager.create_agent(new_job_id)
+        
+        # Start the campaign again
+        asyncio.create_task(run_enhanced_campaign(
+            sector=original_sector,
+            job_id=new_job_id,
+            recipient_email=original_email,
+            autonomy_level=original_autonomy
+        ))
+        
+        return {
+            "message": "Campaign restarted successfully",
+            "old_job_id": job_id,
+            "new_job_id": new_job_id,
+            "sector": original_sector
+        }
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to restart campaign: {str(e)}")
+
+@app.get("/debug/all-campaigns")
+async def debug_all_campaigns():
+    """Get debug info for all campaigns"""
+    all_agents = agent_manager.get_all_agents()
+    
+    campaign_info = []
+    for agent in all_agents:
+        pending_checkpoints = checkpoint_manager.get_pending_checkpoints(agent.job_id)
+        
+        campaign_info.append({
+            "job_id": agent.job_id,
+            "sector": agent.sector,
+            "status": agent.status,
+            "current_step": agent.current_step,
+            "progress": agent.progress,
+            "pending_checkpoints": len(pending_checkpoints),
+            "created_at": agent.created_at.isoformat(),
+            "autonomy_level": agent.autonomy_level
+        })
+    
+    return {
+        "total_campaigns": len(all_agents),
+        "campaigns": campaign_info
+    }
