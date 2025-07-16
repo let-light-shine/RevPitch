@@ -171,7 +171,7 @@ async def get_company_context_from_openai_fallback(company: str) -> str:
         print(f"❌ OpenAI fallback failed: {e}")
         return f"{company} faces typical industry challenges including market competition and operational efficiency."
 
-@timeout_protection(20)
+@timeout_protection(30)
 async def multi_index_retriever_with_timeout(company: str, external_ctx: str, indices: List[str]) -> str:
     """RAG retrieval with timeout protection and length limits"""
     try:
@@ -205,7 +205,7 @@ async def multi_index_retriever_with_timeout(company: str, external_ctx: str, in
         print(f"❌ RAG retrieval failed: {e}")
         return "DevRev helps companies connect customer feedback to engineering teams for faster product iterations."
 
-@timeout_protection(15)
+@timeout_protection(30)
 async def retry_llm_invoke_with_timeout(prompt: str) -> str:
     """Fixed LLM invoke with increased timeout and faster model"""
     try:
