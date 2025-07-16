@@ -19,6 +19,7 @@ st.set_page_config(
 # API Base URL
 #API_BASE = os.getenv("API_BASE_URL", "http://localhost:8000")
 API_URL_BASE="https://revreach-agent-api.onrender.com"
+API_BASE="https://revreach-agent-api.onrender.com"
 
 # Simple, clean CSS - minimal styling only
 st.markdown("""
