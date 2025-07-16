@@ -55,6 +55,19 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+def timeout_protection(timeout_seconds):
+    """Decorator to add timeout protection to async functions"""
+    def decorator(func):
+        @wraps(func)
+        async def wrapper(*args, **kwargs):
+            try:
+                return await asyncio.wait_for(func(*args, **kwargs), timeout=timeout_seconds)
+            except asyncio.TimeoutError:
+                print(f"❌ [TIMEOUT] {func.__name__} timed out after {timeout_seconds} seconds")
+                return None
+        return wrapper
+    return decorator
+
 # Your exact LangChain setup
 ES_URL = "https://022f4eb51f6946e7b708ab92c67d59ab.ap-south-1.aws.elastic-cloud.com:443"
 llm = ChatOpenAI(model="gpt-4", temperature=0.2, openai_api_key=os.getenv("OPENAI_API_KEY"))
@@ -98,6 +111,124 @@ def with_timeout(timeout_seconds):
                 raise TimeoutError(f"Operation timed out after {timeout_seconds} seconds")
         return wrapper
     return decorator
+
+@timeout_protection(15)
+async def get_company_context_from_perplexity_async(company: str) -> str:
+    """Perplexity API with strict timeout"""
+    headers = {
+        "Authorization": f"Bearer {os.getenv('PERPLEXITY_API_KEY')}",
+        "Content-Type": "application/json"
+    }
+    
+    payload = {
+        "model": "llama-3.1-sonar-small-128k-online",
+        "messages": [
+            {
+                "role": "user", 
+                "content": f"Brief 2-sentence summary of {company}'s recent challenges in 2024."
+            }
+        ],
+        "max_tokens": 100,
+        "temperature": 0.1
+    }
+    
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            response = await client.post(
+                "https://api.perplexity.ai/chat/completions", 
+                headers=headers, 
+                json=payload
+            )
+            
+            if response.status_code == 200:
+                data = response.json()
+                content = data.get("choices", [{}])[0].get("message", {}).get("content", "").strip()
+                return content or f"{company} continues to navigate growth challenges."
+            else:
+                print(f"❌ Perplexity API failed: {response.status_code}")
+                return f"{company} continues to navigate growth challenges."
+                
+    except Exception as e:
+        print(f"❌ Perplexity exception: {e}")
+        return f"{company} continues to navigate growth challenges."
+
+@timeout_protection(10)
+async def get_company_context_from_openai_fallback(company: str) -> str:
+    """OpenAI fallback with strict timeout"""
+    try:
+        llm = ChatOpenAI(
+            model="gpt-4", 
+            temperature=0.2, 
+            openai_api_key=os.getenv("OPENAI_API_KEY"),
+            request_timeout=8
+        )
+        
+        prompt = f"Brief 2-sentence summary of typical challenges for {company} in 2024."
+        response = await llm.ainvoke(prompt)
+        return response.content.strip()
+        
+    except Exception as e:
+        print(f"❌ OpenAI fallback failed: {e}")
+        return f"{company} faces typical industry challenges including market competition and operational efficiency."
+
+@timeout_protection(20)
+async def multi_index_retriever_with_timeout(company: str, external_ctx: str, indices: List[str]) -> str:
+    """RAG retrieval with timeout protection"""
+    try:
+        docs = []
+        for index in indices[:1]:  # Limit to just 1 index for speed
+            try:
+                store = ElasticsearchStore(
+                    es_url=ES_URL,
+                    index_name=index,
+                    embedding=embedding_model,
+                    es_user=os.getenv("ES_USERNAME"),
+                    es_password=os.getenv("ES_PASSWORD"),
+                )
+                retriever = store.as_retriever(search_kwargs={"k": 2})  # Limit results
+                docs += retriever.get_relevant_documents(f"{company} DevRev solution")
+                break  # Exit after first successful index
+            except Exception as e:
+                print(f"❌ ES index {index} failed: {e}")
+                continue
+        
+        if docs:
+            return "\n\n".join([d.page_content for d in docs[:2]])  # Limit to 2 docs
+        else:
+            return "DevRev helps companies connect customer feedback to engineering teams for faster product iterations."
+            
+    except Exception as e:
+        print(f"❌ RAG retrieval failed: {e}")
+        return "DevRev helps companies connect customer feedback to engineering teams for faster product iterations."
+
+@timeout_protection(15)
+async def retry_llm_invoke_with_timeout(prompt: str) -> str:
+    """LLM invoke with timeout and single retry"""
+    try:
+        llm = ChatOpenAI(
+            model="gpt-4", 
+            temperature=0.2, 
+            openai_api_key=os.getenv("OPENAI_API_KEY"),
+            request_timeout=10
+        )
+        
+        response = await llm.ainvoke(prompt)
+        return response.content
+        
+    except Exception as e:
+        print(f"❌ LLM invoke failed: {e}")
+        # Return fallback email
+        return """Dear Team,
+
+I hope this email finds you well. I'm reaching out from DevRev to discuss how we can help enhance your customer engagement and product development processes.
+
+DevRev offers an integrated platform that connects customer feedback directly to engineering teams, enabling faster product iterations and better customer satisfaction.
+
+Would you be open to a brief conversation about how DevRev can support your growth objectives?
+
+Best regards,
+John Doe
+DevRev Sales Team"""
 
 async def get_company_context_from_perplexity_async(company: str) -> str:
     """Try Perplexity first, fallback to OpenAI if it fails"""
@@ -158,6 +289,7 @@ async def get_company_context_from_perplexity_async(company: str) -> str:
         except Exception as openai_error:
             print(f"❌ [DEBUG] OpenAI fallback also failed for {company}: {openai_error}")
             return f"Recent market developments for {company} could not be retrieved, but the company continues to operate in the {company.split()[0] if company.split() else 'technology'} sector."
+
 
 async def get_company_context_from_openai(company: str) -> str:
     """OpenAI fallback for company context"""
@@ -776,59 +908,95 @@ async def approve_checkpoint(decision: CheckpointDecision):
 
 @with_timeout(120)
 async def generate_sophisticated_emails_for_agent(agent):
+    """Generate emails with aggressive timeouts and fallbacks"""
     try:
-        # Update agent status
+        print(f"🚀 [DEBUG] Starting fast email generation for agent {agent.job_id}")
+        
         agent.status = "executing"
-        agent.current_step = "fetching_contexts"
-        agent.update_progress()
-        
-        # Use simple context instead of Perplexity to avoid API issues
-        contexts = []
-        for company in agent.selected_companies:
-            context = {
-                "company": company,
-                "external_ctx": f"{company} is a leading company in the {agent.sector} sector facing typical growth challenges and seeking better customer engagement solutions.",
-                "devrev_ctx": "DevRev helps companies connect customer feedback directly to engineering teams, enabling faster product iterations and better customer satisfaction through integrated CRM and issue tracking."
-            }
-            contexts.append(context)
-        
-        agent.contexts = contexts
-        agent.save()
-        
-        print("✅ Contexts generated using simple system (avoiding Perplexity API issues)")
-        
         agent.current_step = "generating_emails"
         agent.update_progress()
         
         emails = {}
-        for ctx in contexts:
+        
+        # Process companies in parallel with timeout
+        async def generate_single_email(company):
             try:
-                prompt = email_prompt.format(**ctx)
-                resp = await retry_llm_invoke(prompt)
-                emails[ctx["company"]] = resp.content
-                print(f"✅ Email generated for {ctx['company']}")
+                print(f"🔍 [DEBUG] Generating email for {company}")
+                
+                # Try Perplexity first (with timeout)
+                external_ctx = await get_company_context_from_perplexity_async(company)
+                if not external_ctx:
+                    # Fallback to OpenAI
+                    external_ctx = await get_company_context_from_openai_fallback(company)
+                    if not external_ctx:
+                        external_ctx = f"{company} continues to navigate growth challenges in their sector."
+                
+                # Try RAG retrieval (with timeout)
+                indices = ["devrev-knowledge-hub"]  # Just 1 index for speed
+                devrev_ctx = await multi_index_retriever_with_timeout(company, external_ctx, indices)
+                if not devrev_ctx:
+                    devrev_ctx = "DevRev helps companies connect customer feedback to engineering teams."
+                
+                # Generate email (with timeout)
+                context = {
+                    "company": company,
+                    "external_ctx": external_ctx,
+                    "devrev_ctx": devrev_ctx
+                }
+                
+                prompt = email_prompt.format(**context)
+                email_content = await retry_llm_invoke_with_timeout(prompt)
+                
+                print(f"✅ [DEBUG] Email generated for {company}")
+                return company, email_content
+                
             except Exception as e:
-                print(f"❌ Email generation failed for {ctx['company']}: {e}")
-                # Use fallback email
-                emails[ctx["company"]] = f"""
-Dear {ctx['company']} Team,
+                print(f"❌ [DEBUG] Email generation failed for {company}: {e}")
+                # Fallback email
+                fallback_email = f"""Dear {company} Team,
 
-I hope this email finds you well. I'm reaching out from DevRev to discuss how we can help {ctx['company']} enhance your customer engagement and product development processes.
+I hope this email finds you well. I'm reaching out from DevRev to discuss how we can help {company} enhance customer engagement and product development processes.
 
-DevRev offers an integrated platform that connects customer feedback directly to your engineering teams, enabling faster product iterations and better customer satisfaction.
+DevRev offers an integrated platform that connects customer feedback directly to engineering teams, enabling faster product iterations and better customer satisfaction.
 
-Would you be open to a brief conversation about how DevRev can support {ctx['company']}'s growth objectives?
+Would you be open to a brief conversation about how DevRev can support {company}'s growth objectives?
 
 Best regards,
 John Doe
-DevRev Sales Team
-"""
+DevRev Sales Team"""
+                return company, fallback_email
+        
+        # Process all companies concurrently with overall timeout
+        try:
+            tasks = [generate_single_email(company) for company in agent.selected_companies]
+            results = await asyncio.wait_for(asyncio.gather(*tasks), timeout=120)  # 2 minute total timeout
+            
+            for company, email_content in results:
+                emails[company] = email_content
                 
+        except asyncio.TimeoutError:
+            print(f"❌ [DEBUG] Overall email generation timed out, using fallbacks")
+            # Generate fallback emails for any missing companies
+            for company in agent.selected_companies:
+                if company not in emails:
+                    emails[company] = f"""Dear {company} Team,
+
+I hope this email finds you well. I'm reaching out from DevRev to discuss partnership opportunities.
+
+DevRev offers an integrated platform that connects customer feedback directly to engineering teams.
+
+Would you be open to a brief conversation?
+
+Best regards,
+John Doe
+DevRev Sales Team"""
+        
         agent.generated_emails = emails
         agent.save()
         
-        print("✅ Emails generated using sophisticated system")
+        print(f"✅ [DEBUG] All emails generated for agent {agent.job_id}")
         
+        # Create email preview checkpoint
         email_data = {
             "emails": emails,
             "total_steps": 3,
@@ -839,8 +1007,11 @@ DevRev Sales Team
         
         checkpoint_manager.create_checkpoint(agent.job_id, "email_preview", email_data, 
                                            f"Review {len(emails)} emails for {agent.sector} companies")
+        
+        print(f"✅ [DEBUG] Email preview checkpoint created for agent {agent.job_id}")
                                            
     except Exception as e:
+        print(f"❌ [DEBUG] Overall email generation failed for agent {agent.job_id}: {e}")
         agent.status = "failed"
         agent.save()
         logging.error(f"Email generation failed: {e}")

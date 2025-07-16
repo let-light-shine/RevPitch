@@ -6,7 +6,7 @@ services:
     plan: starter
     region: oregon
     buildCommand: pip install -r requirements.txt
-    startCommand: gunicorn main:app -w 2 -k uvicorn.workers.UvicornWorker --bind 0.0.0.0:$PORT
+    startCommand:     startCommand: gunicorn main:app -w 1 -k uvicorn.workers.UvicornWorker --bind 0.0.0.0:$PORT --timeout 600 --keep-alive 30 --max-requests 1000
     envVars:
       - key: ENVIRONMENT
         value: production
