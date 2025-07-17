@@ -539,6 +539,16 @@ DEVREV_SECTOR_COMPANIES = {
     "IoT & Hardware": ["Arduino", "Raspberry Pi", "Particle", "Adafruit", "SparkFun", "Seeed Studio", "Blues Wireless", "Helium", "Balena", "Losant"]
 }
 
+# Add this after DEVREV_SECTOR_COMPANIES definition
+DEVREV_SECTORS = [
+    "SaaS", "FinTech", "Healthcare Tech", "E-commerce", "EdTech", 
+    "Enterprise Software", "Developer Tools", "Customer Success", 
+    "Product Management", "API-First Companies", "Data & Analytics", 
+    "DevOps & Infrastructure", "Collaboration Tools", "Marketing Technology", 
+    "Gaming & Entertainment", "Cybersecurity", "Real Estate Tech", 
+    "Travel & Hospitality", "Food & Delivery", "IoT & Hardware"
+]
+
 def get_company_risk_info(company: str):
     """Fast, rule-based risk assessment with business context"""
     company_lower = company.lower()
@@ -947,7 +957,7 @@ async def run_enhanced_campaign(sector: str, job_id: str, recipient_email: str, 
         print(f"🚀 [DEBUG] Starting campaign - Job ID: {job_id}, Autonomy: {autonomy_level}")
         
         # Simple company discovery using existing sector companies
-        companies = DEVREV_SECTOR_COMPANIES.get(sector, [])[:3] # Use predefined companies
+        companies = DEVREV_SECTOR_COMPANIES.get(sector, [])[:3] # Hardcoding the number here
         
         print(f"✅ [DEBUG] Companies discovered: {companies}")
         
@@ -1001,8 +1011,8 @@ async def start_agent_campaign(request: AgentCampaignRequest):
     job_id = str(uuid.uuid4())
     agent = agent_manager.create_agent(job_id)
     
-    if request.sector not in SECTOR_COMPANIES:
-        available_sectors = list(SECTOR_COMPANIES.keys())
+    if request.sector not in DEVREV_SECTOR_COMPANIES:
+        available_sectors = list(DEVREV_SECTOR_COMPANIES.keys())
         raise HTTPException(status_code=400, detail=f"Invalid sector. Available: {available_sectors}")
     
     asyncio.create_task(run_enhanced_campaign(
@@ -1589,7 +1599,7 @@ async def fix_stuck_campaign(job_id: str):
     if agent.status == "planning":
         try:
             # Use default companies for the sector
-            companies = SECTOR_COMPANIES.get(agent.sector, [])[:3]
+            companies = DEVREV_SECTOR_COMPANIES.get(agent.sector, [])[:3]
             
             # Create companies with risk assessment
             companies_with_risk = []
