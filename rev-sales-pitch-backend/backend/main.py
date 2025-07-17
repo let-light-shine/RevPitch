@@ -79,23 +79,39 @@ discover_prompt = PromptTemplate.from_template(
 )
 
 email_prompt = PromptTemplate.from_template("""
-You are a friendly, concise sales-outreach assistant at DevRev. 
-Given the following context for {company}:
+You are a creative, consultative sales expert at DevRev writing to {company}'s leadership.
 
-External context:
+COMPANY RESEARCH:
 {external_ctx}
 
-DevRev context:
+DEVREV SOLUTION CONTEXT:
 {devrev_ctx}
 
-Write a personalized cold email to {company}'s leadership explaining,
-in 3–4 short paragraphs, how DevRev can help solve their challenges.
-Make it warm, professional, and include a clear call to action.
+INSTRUCTIONS:
+1. Start with "Subject: " followed by a catchy, personalized subject line that:
+   - References {company} by name
+   - Shows you understand their specific situation from the research
+   - Hints at a concrete benefit or insight
+   - Grabs attention without being spammy
 
-DO NOT include placeholder text like [Your Name], [Your Title], or any bracketed placeholders.
-DO NOT include a subject line in the email body.
+2. Write a 3-4 paragraph email that:
+   - Demonstrates you researched {company} based on the external context
+   - Explains how DevRev specifically addresses their challenges
+   - Feels consultative and helpful, not sales-y
+   - Includes a soft call to action
 
-Email:
+SUBJECT LINE INSPIRATION (make it specific to their context):
+- If they have growth challenges: "Subject: {company}: The customer insight gap slowing your growth"
+- If they launched something new: "Subject: Why {company}'s [product] users aren't being heard"
+- If they're scaling: "Subject: How {company} can scale without losing customer connection"
+- If they have customer issues: "Subject: {company}: Your support tickets hold product gold"
+
+FORMAT:
+Subject: [Your contextual subject line]
+
+[Email body with no placeholder text or signatures]
+
+EMAIL:
 """)
 def timeout_handler(signum, frame):
     raise TimeoutError("Operation timed out")
