@@ -79,40 +79,39 @@ discover_prompt = PromptTemplate.from_template(
 )
 
 email_prompt = PromptTemplate.from_template("""
-You are a creative, consultative sales expert at DevRev writing to {company}'s leadership.
+You are an elite B2B sales expert at DevRev with deep industry knowledge. You're writing to {company}'s leadership team after thoroughly researching their business.
 
-COMPANY RESEARCH:
+COMPANY INTELLIGENCE:
 {external_ctx}
 
-DEVREV SOLUTION CONTEXT:
+DEVREV CAPABILITIES:
 {devrev_ctx}
 
-INSTRUCTIONS:
-1. Start with "Subject: " followed by a catchy, personalized subject line that:
-   - References {company} by name
-   - Shows you understand their specific situation from the research
-   - Hints at a concrete benefit or insight
-   - Grabs attention without being spammy
+YOUR MISSION:
+Write a highly personalized outreach email that demonstrates you truly understand {company}'s business and have identified a specific way DevRev can drive meaningful impact.
 
-2. Write a 3-4 paragraph email that:
-   - Demonstrates you researched {company} based on the external context
-   - Explains how DevRev specifically addresses their challenges
-   - Feels consultative and helpful, not sales-y
-   - Includes a soft call to action
+SUBJECT LINE REQUIREMENTS:
+- Lead with a compelling value proposition specific to {company}
+- Reference their actual business challenges, initiatives, or market position
+- Position DevRev as the strategic solution to their specific pain points
+- Sound like insider knowledge, not generic sales speak
+- Make them think "How did they know exactly what we're dealing with?"
+- Keep it under 80 characters for mobile optimization
 
-SUBJECT LINE INSPIRATION (make it specific to their context):
-- If they have growth challenges: "Subject: {company}: The customer insight gap slowing your growth"
-- If they launched something new: "Subject: Why {company}'s [product] users aren't being heard"
-- If they're scaling: "Subject: How {company} can scale without losing customer connection"
-- If they have customer issues: "Subject: {company}: Your support tickets hold product gold"
+EMAIL STRUCTURE:
+1. Subject: [Your strategic, company-specific subject line]
+2. Opening: Reference specific company context that shows you've done your homework
+3. Value Proposition: Connect their challenges directly to DevRev's solutions
+4. Social Proof: Briefly mention how similar companies benefit
+5. Call to Action: Suggest a specific, low-commitment next step
 
-FORMAT:
-Subject: [Your contextual subject line]
+TONE: Consultative expert who understands their industry, not a vendor trying to sell.
 
-[Email body with no placeholder text or signatures]
+Write as if you're their strategic advisor who happens to have the perfect solution to their current challenges.
 
 EMAIL:
 """)
+
 def timeout_handler(signum, frame):
     raise TimeoutError("Operation timed out")
 
@@ -478,29 +477,201 @@ class EmailDatabase:
 email_db = EmailDatabase()
 
 # Company databases by sector - using your exact logic but expanded
-SECTOR_COMPANIES = {
-    "SaaS": ["Slack Technologies", "Notion Labs", "Linear", "Figma Inc", "Webflow"],
-    "FinTech": ["Stripe Inc", "Square Inc", "Plaid Technologies", "Coinbase Inc", "Robinhood"],
-    "Healthcare": ["Teladoc Health", "23andMe", "Moderna Inc", "Guardant Health", "10x Genomics"],
-    "E-commerce": ["Shopify Inc", "BigCommerce", "WooCommerce", "Magento Commerce", "PrestaShop"],
-    "EdTech": ["Coursera Inc", "Udemy Inc", "Khan Academy", "Chegg Inc", "Duolingo"],
-    "CleanTech": ["Tesla Energy", "SolarCity Corp", "Beyond Meat", "ChargePoint Inc", "Bloom Energy"]
-}
+#SECTOR_COMPANIES = {
+#    "SaaS": ["Slack Technologies", "Notion Labs", "Linear", "Figma Inc", "Webflow"],
+#    "FinTech": ["Stripe Inc", "Square Inc", "Plaid Technologies", "Coinbase Inc", "Robinhood"],
+#    "Healthcare": ["Teladoc Health", "23andMe", "Moderna Inc", "Guardant Health", "10x Genomics"],
+#    "E-commerce": ["Shopify Inc", "BigCommerce", "WooCommerce", "Magento Commerce", "PrestaShop"],
+#    "EdTech": ["Coursera Inc", "Udemy Inc", "Khan Academy", "Chegg Inc", "Duolingo"],
+#    "CleanTech": ["Tesla Energy", "SolarCity Corp", "Beyond Meat", "ChargePoint Inc", "Bloom Energy"]
+#}
 
-# Risk assessment
-COMPANY_RISK_DATA = {
-    "Slack Technologies": {"risk": "HIGH", "reason": "Major enterprise platform with strict vendor policies"},
-    "Figma Inc": {"risk": "HIGH", "reason": "Recently acquired by Adobe, complex decision-making"},
-    "Tesla Energy": {"risk": "HIGH", "reason": "Elon Musk company with unique communication preferences"},
-    "Stripe Inc": {"risk": "HIGH", "reason": "Major financial infrastructure company with compliance focus"},
-    "Moderna Inc": {"risk": "HIGH", "reason": "Pharmaceutical company with regulatory considerations"},
+## Risk assessment
+#COMPANY_RISK_DATA = {
+#    "Slack Technologies": {"risk": "HIGH", "reason": "Major enterprise platform with strict vendor policies"},
+#    "Figma Inc": {"risk": "HIGH", "reason": "Recently acquired by Adobe, complex decision-making"},
+#    "Tesla Energy": {"risk": "HIGH", "reason": "Elon Musk company with unique communication preferences"},
+#    "Stripe Inc": {"risk": "HIGH", "reason": "Major financial infrastructure company with compliance focus"},
+#    "Moderna Inc": {"risk": "HIGH", "reason": "Pharmaceutical company with regulatory considerations"},
+#}
+
+
+# DevRev-focused sectors and companies (expanded)
+DEVREV_SECTOR_COMPANIES = {
+    "SaaS": ["Slack Technologies", "Notion Labs", "Linear", "Figma Inc", "Airtable", "Monday.com", "Asana Inc", "Canva", "Miro", "Loom"],
+    
+    "FinTech": ["Stripe Inc", "Square Inc", "Plaid Technologies", "Coinbase Inc", "Robinhood", "Chime", "Affirm", "Brex", "Mercury", "Ramp"],
+    
+    "Healthcare Tech": ["Teladoc Health", "23andMe", "Veracyte Inc", "Guardant Health", "10x Genomics", "Tempus Labs", "Oscar Health", "Ro", "Headspace Health", "Calm"],
+    
+    "E-commerce": ["Shopify Inc", "BigCommerce", "WooCommerce", "Magento Commerce", "Wix", "Squarespace", "Gumroad", "Etsy", "Depop", "Poshmark"],
+    
+    "EdTech": ["Coursera Inc", "Udemy Inc", "Khan Academy", "Chegg Inc", "Duolingo", "Skillshare", "MasterClass", "Brilliant", "Codecademy", "Pluralsight"],
+    
+    "Enterprise Software": ["Atlassian", "ServiceNow", "Zendesk", "HubSpot", "Intercom", "Freshworks", "Pendo", "Mixpanel", "Amplitude", "Segment"],
+    
+    "Developer Tools": ["GitHub", "GitLab", "JetBrains", "Postman", "Vercel", "Netlify", "Heroku", "Supabase", "PlanetScale", "Railway"],
+    
+    "Customer Success": ["Gainsight", "ChurnZero", "Totango", "ClientSuccess", "UserVoice", "Pendo", "FullStory", "LogRocket", "Hotjar", "Crazy Egg"],
+    
+    "Product Management": ["ProductPlan", "Aha!", "Roadmunk", "ProdPad", "UserVoice", "Canny", "Feature Upvote", "Productboard", "Roadmap", "Craft"],
+    
+    "API-First Companies": ["Twilio", "SendGrid", "Algolia", "Auth0", "Okta", "Zapier", "Webhooks.io", "RapidAPI", "Postman", "Insomnia"],
+    
+    "Data & Analytics": ["Snowflake", "Databricks", "Looker", "Tableau", "Sisense", "Chartio", "Metabase", "Observable", "Retool", "Grafana"],
+    
+    "DevOps & Infrastructure": ["Datadog", "New Relic", "PagerDuty", "Splunk", "Elastic", "HashiCorp", "Docker Inc", "Kubernetes", "CircleCI", "Jenkins"],
+    
+    "Collaboration Tools": ["Zoom", "Microsoft Teams", "Discord", "Mattermost", "Rocket.Chat", "Twist", "Clickup", "Basecamp", "Trello", "Jira"],
+    
+    "Marketing Technology": ["Mailchimp", "Constant Contact", "Campaign Monitor", "ConvertKit", "Klaviyo", "Iterable", "Customer.io", "Braze", "Mixpanel", "Optimizely"],
+    
+    "Gaming & Entertainment": ["Unity Technologies", "Epic Games", "Roblox Corporation", "Discord", "Twitch", "StreamLabs", "OBS Studio", "Valve Corporation", "Steam", "Itch.io"],
+    
+    "Cybersecurity": ["CrowdStrike", "Okta", "Auth0", "1Password", "LastPass", "Bitwarden", "Duo Security", "Qualys", "Rapid7", "Snyk"],
+    
+    "Real Estate Tech": ["Zillow", "Redfin", "Compass", "Opendoor", "Offerpad", "Divvy Homes", "Knock", "Homelight", "Flyhomes", "Orchard"],
+    
+    "Travel & Hospitality": ["Airbnb", "Booking.com", "Expedia", "TripAdvisor", "Kayak", "Skyscanner", "GetYourGuide", "Viator", "Hostelworld", "Agoda"],
+    
+    "Food & Delivery": ["DoorDash", "Uber Eats", "Grubhub", "Postmates", "Deliveroo", "Just Eat", "Zomato", "Swiggy", "Toast", "Resy"],
+    
+    "IoT & Hardware": ["Arduino", "Raspberry Pi", "Particle", "Adafruit", "SparkFun", "Seeed Studio", "Blues Wireless", "Helium", "Balena", "Losant"]
 }
 
 def get_company_risk_info(company: str):
-    if company in COMPANY_RISK_DATA:
-        return COMPANY_RISK_DATA[company]
+    """Fast, rule-based risk assessment with business context"""
+    company_lower = company.lower()
+    
+    # High-profile/large companies (stricter vendor processes)
+    high_risk_indicators = [
+        # Major Tech Platforms
+        "microsoft", "google", "apple", "amazon", "meta", "netflix", 
+        "salesforce", "oracle", "ibm", "adobe", "tesla",
+        
+        # Enterprise Software Giants
+        "slack", "github", "atlassian", "servicenow", "zoom", "discord",
+        "snowflake", "databricks", "elastic", "hashicorp",
+        
+        # Major Consumer Platforms
+        "airbnb", "uber", "doordash", "zillow", "booking", "expedia",
+        "roblox", "unity", "epic", "valve", "steam", "twitch",
+        
+        # Large Financial Platforms
+        "stripe", "square", "coinbase", "robinhood"
+    ]
+    
+    # Financial/regulated companies (compliance focus)
+    financial_indicators = [
+        "stripe", "square", "plaid", "coinbase", "robinhood", "chime", 
+        "affirm", "paypal", "visa", "mastercard", "brex", "mercury", 
+        "ramp", "okta", "auth0"
+    ]
+    
+    # Healthcare companies (regulatory considerations)
+    healthcare_indicators = [
+        "teladoc", "23andme", "moderna", "guardant", "genomics", "tempus",
+        "oscar", "headspace", "calm", "veracyte"
+    ]
+    
+    # Security companies (high compliance standards)
+    security_indicators = [
+        "crowdstrike", "okta", "auth0", "1password", "lastpass", "bitwarden",
+        "qualys", "rapid7", "snyk", "duo", "splunk"
+    ]
+    
+    # Gaming/Entertainment (unique decision processes)
+    gaming_indicators = [
+        "unity", "epic", "roblox", "valve", "steam", "twitch", "discord"
+    ]
+    
+    # Established Enterprise (structured processes)
+    enterprise_indicators = [
+        "hubspot", "zendesk", "freshworks", "datadog", "new relic", 
+        "pagerduty", "tableau", "looker", "mixpanel", "amplitude",
+        "mailchimp", "constant contact", "klaviyo", "iterable"
+    ]
+    
+    if any(indicator in company_lower for indicator in high_risk_indicators):
+        return {
+            "risk": "HIGH", 
+            "reason": "Major platform company with enterprise vendor policies and complex decision-making hierarchy",
+            "business_impact": "High-value target (potential $500K+ deals) but requires 6-12 month sales cycle with multiple stakeholders",
+            "required_approval": "🔴 Executive sign-off required - C-level engagement needed",
+            "sales_strategy": "Custom approach, executive briefings, security reviews, reference customers required"
+        }
+    
+    elif any(indicator in company_lower for indicator in financial_indicators):
+        return {
+            "risk": "HIGH", 
+            "reason": "Financial services company with strict compliance, security, and regulatory requirements",
+            "business_impact": "Excellent fit for DevRev but requires extensive security/compliance documentation",
+            "required_approval": "🔴 Legal and executive review required - SOC2/ISO compliance needed",
+            "sales_strategy": "Compliance-first approach, security questionnaires, regulatory alignment discussions"
+        }
+    
+    elif any(indicator in company_lower for indicator in security_indicators):
+        return {
+            "risk": "HIGH", 
+            "reason": "Cybersecurity company with stringent vendor security requirements and thorough vetting processes",
+            "business_impact": "Ironic target - security companies need extra security validation before adopting new tools",
+            "required_approval": "🔴 Security team review required - expect extensive technical due diligence",
+            "sales_strategy": "Security-first messaging, technical deep dives, infrastructure security demonstrations"
+        }
+    
+    elif any(indicator in company_lower for indicator in gaming_indicators):
+        return {
+            "risk": "MEDIUM", 
+            "reason": "Gaming/entertainment company with unique culture and non-traditional business processes",
+            "business_impact": "Growing market for DevRev - gaming companies increasingly need customer feedback loops",
+            "required_approval": "🟡 Sales manager approval - cultural fit assessment needed",
+            "sales_strategy": "Community-focused messaging, user experience emphasis, product iteration benefits"
+        }
+    
+    elif any(indicator in company_lower for indicator in healthcare_indicators):
+        return {
+            "risk": "MEDIUM", 
+            "reason": "Healthcare technology company with regulatory considerations but strong innovation focus",
+            "business_impact": "Perfect DevRev fit - healthcare companies need tight customer-product feedback for compliance",
+            "required_approval": "🟡 Compliance review recommended - HIPAA considerations",
+            "sales_strategy": "Patient outcome focus, regulatory compliance benefits, clinical workflow integration"
+        }
+    
+    elif any(indicator in company_lower for indicator in enterprise_indicators):
+        return {
+            "risk": "MEDIUM", 
+            "reason": "Established enterprise software company with structured procurement but innovation mindset",
+            "business_impact": "Natural DevRev prospects - already understand value of customer-centric development",
+            "required_approval": "🟡 Standard enterprise process - manager approval sufficient",
+            "sales_strategy": "Competitive differentiation focus, ROI metrics, integration capabilities"
+        }
+    
+    elif "inc" in company_lower or "corp" in company_lower or "technologies" in company_lower:
+        return {
+            "risk": "MEDIUM", 
+            "reason": "Incorporated company suggesting established operations with structured business processes",
+            "business_impact": "Standard mid-market opportunity with typical B2B sales cycle (3-6 months)",
+            "required_approval": "🟡 Manager review - standard enterprise qualification needed",
+            "sales_strategy": "Business case development, stakeholder mapping, pilot program approach"
+        }
+    
+    elif any(startup_indicator in company_lower for startup_indicator in ["labs", "studio", "app", "platform"]):
+        return {
+            "risk": "LOW", 
+            "reason": "Startup or scale-up company with agile decision-making and openness to new solutions",
+            "business_impact": "Fast decision cycle (1-2 months) but smaller initial contract value ($10K-50K)",
+            "required_approval": "🟢 Individual rep approved - good for building case studies",
+            "sales_strategy": "Growth enablement messaging, speed-to-value emphasis, founder-to-founder engagement"
+        }
+    
     else:
-        return {"risk": "LOW", "reason": "Standard business prospect, no special considerations"}
+        return {
+            "risk": "LOW", 
+            "reason": "Growing company with customer-centric focus, likely receptive to solutions that improve customer experience",
+            "business_impact": "Ideal DevRev target - companies focused on customer success need better feedback loops",
+            "required_approval": "🟢 Standard outreach approved - proceed with confidence",
+            "sales_strategy": "Customer success focus, product iteration benefits, competitive advantage messaging"
+        }
 
 # Simple agent system for approval flow
 class SimpleAgent:
@@ -730,9 +901,11 @@ class SimpleCheckpointManager:
             agent.status = "completed"
             agent.current_step = "completed"
             agent.progress = 100
+            agent.save()
             
         except Exception as e:
             agent.status = "failed"
+            agent.save()
             logging.error(f"Auto email sending failed: {e}")
     
     def get_pending_checkpoints(self, job_id):
@@ -774,7 +947,7 @@ async def run_enhanced_campaign(sector: str, job_id: str, recipient_email: str, 
         print(f"🚀 [DEBUG] Starting campaign - Job ID: {job_id}, Autonomy: {autonomy_level}")
         
         # Simple company discovery using existing sector companies
-        companies = SECTOR_COMPANIES.get(sector, [])[:3]  # Use predefined companies
+        companies = DEVREV_SECTOR_COMPANIES.get(sector, [])[:3] # Use predefined companies
         
         print(f"✅ [DEBUG] Companies discovered: {companies}")
         
@@ -1120,13 +1293,15 @@ async def send_sophisticated_emails_for_agent(agent, checkpoint):
         agent.status = "completed"
         agent.current_step = "completed"
         agent.progress = 100
+        agent.save()
         
         sent = sum(1 for r in results if r["status"] == "sent")
-        print(f"📊 Sophisticated Email Results: Sent = {sent}, Failed = {len(results) - sent}")
+        print(f"📊 Email Results: Sent = {sent}, Failed = {len(results) - sent}")
         
     except Exception as e:
         agent.status = "failed"
-        logging.error(f"Sophisticated email sending failed: {e}")
+        agent.save()
+        logging.error(f"Email sending failed: {e}")
 
 @app.get("/agent-status/{job_id}")
 async def get_agent_status(job_id: str):

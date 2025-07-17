@@ -103,12 +103,22 @@ def campaigns_tab():
     
     # Campaign Configuration section
     st.header("Campaign Configuration")
+
+    # Update the sectors list
+    DEVREV_SECTORS = [
+    "SaaS", "FinTech", "Healthcare Tech", "E-commerce", "EdTech", 
+    "Enterprise Software", "Developer Tools", "Customer Success", 
+    "Product Management", "API-First Companies", "Data & Analytics", 
+    "DevOps & Infrastructure", "Collaboration Tools", "Marketing Technology", 
+    "Gaming & Entertainment", "Cybersecurity", "Real Estate Tech", 
+    "Travel & Hospitality", "Food & Delivery", "IoT & Hardware"
+]
     
     # Target Sector with info button
     st.markdown('<p class="field-label">Target Sector <span style="color: #666; cursor: help;" title="The sector helps our AI agent discover relevant companies and tailor email context to industry-specific challenges.">ℹ️</span></p>', unsafe_allow_html=True)
     sector = st.selectbox(
         "Target Sector",
-        ["SaaS", "FinTech", "Healthcare", "E-commerce", "EdTech", "CleanTech"],
+        DEVREV_SECTORS,
         index=0,
         help="The sector helps our AI agent discover relevant companies and tailor email context to industry-specific challenges.",
         label_visibility="collapsed"
