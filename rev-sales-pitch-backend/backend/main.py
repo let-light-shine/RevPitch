@@ -90,6 +90,13 @@ DEVREV CAPABILITIES:
 YOUR MISSION:
 Write a highly personalized outreach email that demonstrates you truly understand {company}'s business and have identified a specific way DevRev can drive meaningful impact.
 
+CRITICAL REQUIREMENTS:
+- Write "Dear {company} Leadership Team" as the greeting - NO placeholders or brackets
+- NO placeholder text like [Company Name], [Your Name], [Title], etc.
+- Use actual company name "{company}" throughout the email
+- Write as "John Doe from DevRev" - no placeholders
+- Include a proper signature: "Best regards, John Doe, DevRev Sales Team"
+
 SUBJECT LINE REQUIREMENTS:
 - Lead with a compelling value proposition specific to {company}
 - Reference their actual business challenges, initiatives, or market position
@@ -100,14 +107,16 @@ SUBJECT LINE REQUIREMENTS:
 
 EMAIL STRUCTURE:
 1. Subject: [Your strategic, company-specific subject line]
-2. Opening: Reference specific company context that shows you've done your homework
-3. Value Proposition: Connect their challenges directly to DevRev's solutions
-4. Social Proof: Briefly mention how similar companies benefit
-5. Call to Action: Suggest a specific, low-commitment next step
+2. Dear {company} Leadership Team,
+3. Opening: Reference specific company context that shows you've done your homework
+4. Value Proposition: Connect their challenges directly to DevRev's solutions
+5. Social Proof: Briefly mention how similar companies benefit
+6. Call to Action: Suggest a specific, low-commitment next step
+7. Best regards, John Doe, DevRev Sales Team
 
 TONE: Consultative expert who understands their industry, not a vendor trying to sell.
 
-Write as if you're their strategic advisor who happens to have the perfect solution to their current challenges.
+ABSOLUTELY NO PLACEHOLDERS: Replace all [brackets] and {{curly braces}} with actual content.
 
 EMAIL:
 """)
@@ -755,6 +764,7 @@ class SimpleCheckpointManager:
             agent.checkpoints.append(checkpoint)
             if agent.autonomy_level == "supervised":
                 agent.status = "waiting_approval"
+                agent.save()
             else:
                 asyncio.create_task(self.auto_approve_checkpoint(checkpoint_id, agent))
         
@@ -853,6 +863,7 @@ class SimpleCheckpointManager:
             
             agent.current_step = "sending_emails"
             agent.update_progress()
+            agent.save()
             
             results = []
             for company, raw_body in emails.items():
@@ -1236,17 +1247,21 @@ async def send_sophisticated_emails_for_agent(agent, checkpoint):
             
         agent.current_step = "sending_emails"
         agent.update_progress()
+        agent.save()
         
         results = []
         for company, raw_body in emails.items():
-            # Your exact email processing logic with fixes
+            # Extract subject and body
             subject_extracted, email_body = extract_subject_and_body(raw_body)
             subject = subject_extracted or f"DevRev Partnership Opportunity for {company}"
             
-            # Enhanced signature
-            signature = "\n\nBest regards,\nJohn Doe\nDevRev Sales Team"
+            # IMPROVED: Check if signature already exists before adding
+            has_signature = any(sig in email_body.lower() for sig in [
+                "best regards", "sincerely", "warm regards", "kind regards",
+                "devrev sales team", "john doe"
+            ])
             
-            # Enhanced placeholder patterns
+            # Enhanced placeholder patterns (includes the new greeting issue)
             placeholder_patterns = [
                 r"(?i)^looking forward to.*",
                 r"(?i)^best( regards)?,?.*",
@@ -1259,18 +1274,33 @@ async def send_sophisticated_emails_for_agent(agent, checkpoint):
                 r"(?i)\{.*name.*\}",
                 r"(?i)\[.*title.*\]",
                 r"(?i)\{.*title.*\}",
+                # NEW: Fix greeting placeholders
+                r"(?i)\[.*leadership.*team.*\]",
+                r"(?i)\[.*team.*\]",
+                r"(?i)hi \[.*\]",
+                r"(?i)dear \[.*\]",
+                r"(?i)\[.*leadership.*\]",
+                r"(?i)\{.*leadership.*\}",
+                r"(?i)\[.*company.*\]",
+                r"(?i)\{.*company.*\}",
             ]
             
             email_lines = email_body.strip().splitlines()
             cleaned_lines = []
             for line in email_lines:
                 line_clean = line.strip()
+                # Skip lines that match placeholder patterns
                 if any(re.search(pat, line_clean) for pat in placeholder_patterns):
                     continue
                 cleaned_lines.append(line)
             cleaned_body = "\n".join(cleaned_lines).strip()
             
-            full_body = cleaned_body + signature
+            # IMPROVED: Only add signature if none exists
+            if not has_signature:
+                signature = "\n\nBest regards,\nJohn Doe\nDevRev Sales Team"
+                full_body = cleaned_body + signature
+            else:
+                full_body = cleaned_body
             
             try:
                 send_email(to_email=recipient_email, subject=subject, body=full_body)

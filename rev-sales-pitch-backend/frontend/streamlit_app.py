@@ -282,6 +282,11 @@ def approvals_tab():
             # Campaign is running
             progress = agent.get('progress', 0)
             st.info(f"🚀 **Campaign executing** - {progress}% complete")
+
+            if progress < 100:
+                st.markdown("*This page will automatically refresh to show completion status.*")
+                time.sleep(3)
+                st.rerun()
             campaigns_shown = True
             
         elif status == 'completed':
@@ -645,18 +650,6 @@ def render_step_2_email_review(checkpoint):
                             key=f"email_preview_{checkpoint['checkpoint_id']}_{company}"
                         )
                         
-                        # Email quality metrics
-                        word_count = len(body.split()) if body else 0
-                        char_count = len(body) if body else 0
-                        
-                        col_a, col_b, col_c = st.columns(3)
-                        with col_a:
-                            st.metric("Word Count", word_count)
-                        with col_b:
-                            st.metric("Characters", char_count)
-                        with col_c:
-                            personalization_score = "High" if company.lower() in body.lower() else "Medium"
-                            st.metric("Personalization", personalization_score)
             else:
                 # Deselected email container
                 st.markdown(f"""
@@ -1133,18 +1126,6 @@ def render_step_2_email_review(checkpoint):
                             key=f"email_preview_{checkpoint['checkpoint_id']}_{company}"
                         )
                         
-                        # Email quality metrics
-                        word_count = len(body.split()) if body else 0
-                        char_count = len(body) if body else 0
-                        
-                        col_a, col_b, col_c = st.columns(3)
-                        with col_a:
-                            st.metric("Word Count", word_count)
-                        with col_b:
-                            st.metric("Characters", char_count)
-                        with col_c:
-                            personalization_score = "High" if company.lower() in body.lower() else "Medium"
-                            st.metric("Personalization", personalization_score)
             else:
                 # Deselected email container
                 st.markdown(f"""
@@ -1386,7 +1367,7 @@ def approve_checkpoint(checkpoint_id, decision, feedback=None, selected_companie
         return None
 
 def analytics_tab():
-    """Simple analytics interface"""
+    """Enhanced analytics interface with sector-company tracking"""
     
     st.title("📊 Analytics")
     st.write("Campaign performance and metrics")
@@ -1419,34 +1400,119 @@ def analytics_tab():
         campaigns = len(dashboard.get('active_agents', [])) if dashboard else 0
         st.metric("Active Campaigns", campaigns)
     
-    # Charts
+    # Enhanced Sector Analysis
     if summary.get('sectors_today'):
-        st.subheader("🎯 Sector Distribution")
+        st.subheader("🎯 Sector Performance Analysis")
         
         sectors_data = summary['sectors_today']
         if sectors_data:
-            fig = px.pie(
-                values=list(sectors_data.values()),
-                names=list(sectors_data.keys()),
-                title="Emails by Sector"
-            )
-            st.plotly_chart(fig, use_container_width=True)
+            # Create two columns for charts
+            col1, col2 = st.columns(2)
+            
+            with col1:
+                # Pie chart
+                fig_pie = px.pie(
+                    values=list(sectors_data.values()),
+                    names=list(sectors_data.keys()),
+                    title="Emails by Sector"
+                )
+                st.plotly_chart(fig_pie, use_container_width=True)
+            
+            with col2:
+                # Bar chart
+                fig_bar = px.bar(
+                    x=list(sectors_data.keys()),
+                    y=list(sectors_data.values()),
+                    title="Email Count by Sector",
+                    labels={'x': 'Sector', 'y': 'Email Count'}
+                )
+                st.plotly_chart(fig_bar, use_container_width=True)
     
-    # Recent activity
+    # NEW: Detailed Sector-Company Breakdown
+    st.subheader("📋 Detailed Sector-Company Breakdown")
+    
+    today_emails = analytics.get('recent_emails', [])
+    if today_emails:
+        # Process data for sector-company breakdown
+        sector_company_data = {}
+        
+        for email in today_emails:
+            sector = email.get('sector', 'Unknown')
+            company = email.get('company', 'Unknown')
+            status = email.get('status', 'unknown')
+            
+            if sector not in sector_company_data:
+                sector_company_data[sector] = {
+                    'companies': {},
+                    'total_emails': 0,
+                    'successful_emails': 0
+                }
+            
+            if company not in sector_company_data[sector]['companies']:
+                sector_company_data[sector]['companies'][company] = {
+                    'emails_sent': 0,
+                    'status': 'unknown'
+                }
+            
+            sector_company_data[sector]['companies'][company]['emails_sent'] += 1
+            sector_company_data[sector]['companies'][company]['status'] = status
+            sector_company_data[sector]['total_emails'] += 1
+            
+            if status == 'sent':
+                sector_company_data[sector]['successful_emails'] += 1
+        
+        # Display sector breakdown
+        for sector, data in sector_company_data.items():
+            with st.expander(f"📊 {sector} Sector - {data['total_emails']} emails sent to {len(data['companies'])} companies", expanded=False):
+                
+                # Sector summary
+                success_rate = (data['successful_emails'] / max(data['total_emails'], 1)) * 100
+                
+                col1, col2, col3 = st.columns(3)
+                with col1:
+                    st.metric("Total Emails", data['total_emails'])
+                with col2:
+                    st.metric("Companies Reached", len(data['companies']))
+                with col3:
+                    st.metric("Success Rate", f"{success_rate:.1f}%")
+                
+                # Company details
+                st.markdown("**Companies in this sector:**")
+                
+                company_df_data = []
+                for company, company_data in data['companies'].items():
+                    status_emoji = "✅" if company_data['status'] == 'sent' else "❌"
+                    company_df_data.append({
+                        'Company': f"{status_emoji} {company}",
+                        'Emails Sent': company_data['emails_sent'],
+                        'Status': company_data['status'].title()
+                    })
+                
+                if company_df_data:
+                    df_companies = pd.DataFrame(company_df_data)
+                    st.dataframe(df_companies, use_container_width=True, hide_index=True)
+    
+    # Recent activity (simplified)
     if analytics.get('recent_emails'):
-        st.subheader("📧 Recent Activity")
+        st.subheader("📧 Recent Activity (Last 10)")
         
         recent_emails = analytics['recent_emails']
         if recent_emails:
-            df = pd.DataFrame(recent_emails)
+            df = pd.DataFrame(recent_emails[-10:])  # Last 10 only
             if 'timestamp' in df.columns:
                 df['timestamp'] = pd.to_datetime(df['timestamp']).dt.strftime('%H:%M:%S')
             
-            # Show last 10
+            # Show simplified view
             display_cols = ['timestamp', 'sector', 'company', 'status']
             if all(col in df.columns for col in display_cols):
-                df_display = df[display_cols].tail(10)
+                df_display = df[display_cols]
                 df_display.columns = ['Time', 'Sector', 'Company', 'Status']
+                
+                # Add status emoji
+                df_display['Status'] = df_display['Status'].apply(
+                    lambda x: f"✅ {x}" if x == 'sent' else f"❌ {x}"
+                )
+                
                 st.dataframe(df_display, use_container_width=True, hide_index=True)
     
     # Current campaigns
@@ -1455,9 +1521,10 @@ def analytics_tab():
         
         campaign_data = []
         for agent in dashboard['active_agents']:
+            status_emoji = "🚀" if agent.get('status') == 'executing' else "⏳"
             campaign_data.append({
+                'Status': f"{status_emoji} {agent.get('status', 'unknown').title()}",
                 'Sector': agent.get('sector', 'Unknown'),
-                'Status': agent.get('status', 'unknown'),
                 'Progress': f"{agent.get('progress', 0)}%",
                 'Created': agent.get('created_at', '')[:10] if agent.get('created_at') else 'Unknown'
             })
