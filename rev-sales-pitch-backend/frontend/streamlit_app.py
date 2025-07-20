@@ -21,6 +21,7 @@ st.set_page_config(
 API_BASE = "https://revpitch.onrender.com"
 
 # Simple, clean CSS - minimal styling only
+# Replace the existing CSS section with this:
 st.markdown("""
 <style>
 .main {
@@ -30,15 +31,42 @@ st.markdown("""
 .stButton > button {
     width: 100%;
     height: 3rem;
+    background: linear-gradient(135deg, #6366f1, #8b5cf6);
+    border: none;
+    border-radius: 8px;
+    color: white;
+    font-weight: 600;
+    transition: all 0.3s ease;
+}
+
+.stButton > button:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 25px rgba(139, 92, 246, 0.3);
 }
 
 .revreach-header {
-    background: linear-gradient(135deg, #0e1547, #1a237e);
-    padding: 20px;
-    border-radius: 10px;
-    margin-bottom: 20px;
+    background: linear-gradient(135deg, #4c1d95, #6366f1, #8b5cf6);
+    padding: 40px 30px;
+    border-radius: 20px;
+    margin-bottom: 30px;
     color: white;
     text-align: center;
+    box-shadow: 0 20px 40px rgba(139, 92, 246, 0.2);
+}
+
+.revreach-header h1 {
+    font-size: 3.5rem;
+    font-weight: 800;
+    margin-bottom: 10px;
+    letter-spacing: -2px;
+}
+
+.revreach-header h3 {
+    font-size: 1.4rem;
+    font-weight: 400;
+    opacity: 0.95;
+    margin-bottom: 0;
+    font-style: italic;
 }
 
 .field-label {
